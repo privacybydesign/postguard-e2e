@@ -1,0 +1,20 @@
+{
+  "name": "postguard-version-matrix",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Sweeps published @e4a/pg-js and E4A.PostGuard versions against a target PKG+Cryptify and reports which versions still work.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "enumerate": "node --env-file-if-exists=.env src/enumerate.mjs",
+    "run:all": "node --env-file-if-exists=.env src/run.mjs all",
+    "run:js": "node --env-file-if-exists=.env src/run.mjs js",
+    "run:dotnet": "node --env-file-if-exists=.env src/run.mjs dotnet"
+  },
+  "dependencies": {
+    "semver": "^7.6.0"
+  }
+}

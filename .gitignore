@@ -1,0 +1,9 @@
+node_modules/
+.env
+.sandbox/
+report/*
+!report/.gitkeep
+
+# stray build artifacts from dotnet sandboxes (should live under .sandbox/)
+bin/
+obj/
