@@ -18,13 +18,14 @@ is what makes automated end-to-end tests (including decryption) possible.
 
 Build contexts and bind-mounts point at sibling checkouts (`../../postguard`,
 `../../cryptify`, `../../irmago`), so the stack exercises whatever you have
-checked out — no published images, no submodules. The irma-server also bind-mounts
-`../../postguard-website/docker/irma/jwt_privkey.pem` (read-only) as its JWT
-signing key, so `postguard-website` must be checked out alongside too.
+checked out — no published images, no submodules. The irma-server's JWT signing
+key is a throwaway you generate locally (see Usage); it is gitignored, not a
+committed secret.
 
 ## Usage
 
 ```bash
+openssl genrsa -out irma/jwt_privkey.pem 2048   # once: throwaway irma-server JWT key
 docker compose up -d          # first run builds the Rust services (slow)
 curl -s localhost:8087/health # PKG
 curl -s localhost:8000/health # cryptify

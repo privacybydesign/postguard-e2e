@@ -11,3 +11,6 @@ obj/
 # go: compiled binaries from `go build` in a main package dir
 yivi-driver/yividriver
 *.test
+
+# generated dev irma-server JWT key (regenerated locally / in CI)
+stack/irma/*.pem

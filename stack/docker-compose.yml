@@ -28,7 +28,9 @@ services:
         volumes:
             - ../../irmago/testdata/irma_configuration:/irma/schemes
             - ../../irmago/testdata/privatekeys:/irma/privkeys:ro
-            - ../../postguard-website/docker/irma/jwt_privkey.pem:/etc/irma/jwt_privkey.pem:ro
+            # Throwaway JWT signing key, generated locally / in CI (gitignored):
+            #   openssl genrsa -out irma/jwt_privkey.pem 2048
+            - ./irma/jwt_privkey.pem:/etc/irma/jwt_privkey.pem:ro
         networks: [pg]
 
     # Private Key Generator (built from the sibling ../../postguard working tree).

@@ -1,0 +1,109 @@
+# End-to-end harness (EPIC issue #207 / P0.5).
+#
+# Boots the full stack and runs the integration + golden-flow tests, with no
+# phone and no browser. Triggers:
+#   - schedule:        nightly
+#   - pull_request:    on this repo when the harness/stack change
+#   - workflow_dispatch: manual
+#   - workflow_call:   so other repos can gate on it, e.g.
+#       jobs:
+#         e2e:
+#           uses: encryption4all/postguard-e2e/.github/workflows/e2e.yml@main
+#
+# All dependencies are public (postguard, cryptify, privacybydesign/irmago), so
+# no extra checkout secret is needed. The irma-server's JWT key is generated
+# here (never committed).
+name: e2e
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  schedule:
+    - cron: '0 3 * * *' # 03:00 UTC nightly
+  pull_request:
+    paths:
+      - 'yivi-driver/**'
+      - 'stack/**'
+      - '.github/workflows/e2e.yml'
+
+jobs:
+  golden-flow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      # Check everything out as siblings under $GITHUB_WORKSPACE so the
+      # `../../…` paths in stack/docker-compose.yml and yivi-driver/go.mod
+      # resolve (postguard-e2e in its own subdir, deps one level up from it).
+      - name: Checkout postguard-e2e
+        uses: actions/checkout@v4
+        with:
+          path: postguard-e2e
+
+      - name: Checkout irmago (EUDI fork, pinned)
+        uses: actions/checkout@v4
+        with:
+          repository: privacybydesign/irmago
+          ref: de4b4b713f17e92c7181d45dbfdd848784e82b74
+          path: irmago
+
+      - name: Checkout postguard (PKG)
+        uses: actions/checkout@v4
+        with:
+          repository: encryption4all/postguard
+          path: postguard
+
+      - name: Checkout cryptify
+        uses: actions/checkout@v4
+        with:
+          repository: encryption4all/cryptify
+          path: cryptify
+
+      - name: Install libsqlcipher (CGO dep of irmago's client)
+        run: sudo apt-get update && sudo apt-get install -y libsqlcipher-dev
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Generate throwaway irma-server JWT key
+        run: openssl genrsa -out postguard-e2e/stack/irma/jwt_privkey.pem 2048
+
+      - name: Boot the stack (builds PKG + cryptify from source — slow)
+        working-directory: postguard-e2e/stack
+        run: docker compose up -d --build
+
+      - name: Wait for services healthy
+        run: |
+          check() {
+            for i in $(seq 1 60); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$1" || true)
+              if [ "$code" = "200" ]; then echo "  $1 healthy"; return 0; fi
+              sleep 5
+            done
+            echo "  $1 never became healthy"; return 1
+          }
+          check 8088/publickey
+          check 8087/health
+          check 8000/health
+
+      - name: Install crypto-oracle deps
+        working-directory: postguard-e2e/yivi-driver/oracle
+        run: npm ci
+
+      - name: Run e2e tests
+        working-directory: postguard-e2e/yivi-driver
+        run: go test ./... -count=1 -v
+
+      - name: Stack logs (on failure)
+        if: failure()
+        working-directory: postguard-e2e/stack
+        run: docker compose logs --no-color | tail -400
+
+      - name: Tear down
+        if: always()
+        working-directory: postguard-e2e/stack
+        run: docker compose down -v
