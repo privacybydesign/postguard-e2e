@@ -14,10 +14,13 @@ is what makes automated end-to-end tests (including decryption) possible.
 | `postguard-pkg` | 8087 | PKG, built from the sibling `../../postguard` working tree (tests current code). |
 | `cryptify` | 8000 | Encrypted file host + email delivery, from `../../cryptify`. |
 | `mailcrab` | 1080 (UI), 1025 (SMTP) | Mail sink — recipient notifications are captured, not sent. |
+| `business-db` | (internal) | Postgres with a *minimal* business schema + one seeded API key, so the PKG can do API-key signing (`business-db/seed.sql`). |
 
-Build contexts point at sibling checkouts (`../../postguard`, `../../cryptify`,
-`../../irmago`), so the stack exercises whatever you have checked out — no
-published images, no submodules.
+Build contexts and bind-mounts point at sibling checkouts (`../../postguard`,
+`../../cryptify`, `../../irmago`), so the stack exercises whatever you have
+checked out — no published images, no submodules. The irma-server also bind-mounts
+`../../postguard-website/docker/irma/jwt_privkey.pem` (read-only) as its JWT
+signing key, so `postguard-website` must be checked out alongside too.
 
 ## Usage
 
@@ -39,9 +42,12 @@ completes disclosures against the same server the PKG uses internally
 
 ## Notes
 
-- No `DATABASE_URL` is set on the PKG, so API-key auth is disabled (fine for the
-  Yivi/JWT flows). Add a Postgres service + `DATABASE_URL` when testing the
-  business API-key path.
+- The PKG gets `DATABASE_URL` pointing at `business-db`, enabling API-key auth.
+  The seed provisions one org (`sender@golden.test`) and the key
+  `PG-goldenflowe2ekey` with `signing_attrs = {"email": true}` — this is a test
+  fixture, **not** the real business schema. `business-db` has no persistent
+  volume, so recreating it (`docker compose up -d --force-recreate business-db`,
+  or any `down`+`up`) re-applies `seed.sql`.
 - The irma-server runs `--no-auth` (dev only): requestors need no JWT auth.
 - Issuer private keys come from `../../irmago/testdata/privatekeys`; these are
   Yivi's public *test* keys, safe to use — never production keys.

@@ -1,0 +1,10 @@
+{
+  "name": "postguard-e2e-crypto-oracle",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Stateless seal/unseal oracle over @e4a/pg-wasm, driven by the Go golden-flow test.",
+  "dependencies": {
+    "@e4a/pg-wasm": "0.6.1"
+  }
+}

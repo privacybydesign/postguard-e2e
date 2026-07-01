@@ -60,24 +60,41 @@ Defaults point at the sibling checkouts; override via env:
   headless issue → disclose → VALID proof.
 - **PKG integration (needs the stack):** `integration_test.go` — issues a
   credential via the irma-server, has the **PKG** start a disclosure, drives the
-  headless holder, and asserts the PKG returns a valid JWT:
+  headless holder, and asserts the PKG returns a valid JWT.
+
+- **Golden flow (needs the stack + oracle deps):** `golden_flow_test.go` — the
+  full happy path: seal + sign (business API key) → cryptify upload → assert
+  notification email in mailcrab → download → headless disclose → USK →
+  **decrypt** → verify plaintext + sender. Go orchestrates; a small Node
+  `oracle/` does the pg-wasm `seal`/`unseal` (see [`oracle/`](oracle/)).
 
   ```bash
   cd ../stack && docker compose up -d
-  cd ../yivi-driver && go test -run TestPKGInitiatedDisclosureYieldsJWT -v
+  cd ../yivi-driver/oracle && npm install     # once, for the crypto oracle
+  cd .. && go test -v                         # runs both integration tests
   ```
 
-  Skips automatically if the stack isn't running.
+  Both skip automatically if the stack isn't running.
 
 ## Status
 
-- ✅ **#204 core:** headless issue → disclose → VALID proof (self-test).
-- ✅ **#204 full acceptance:** PKG-initiated disclosure → valid signed JWT,
-  verified by `TestPKGInitiatedDisclosureYieldsJWT` against the stack.
-- ✅ **#203:** `../stack` brings up PKG + irma-server (+ cryptify + mailcrab)
-  with the irma-server wired for test-scheme issuance.
-- ⏭️ **#205 (next):** full golden flow — sender encrypts → cryptify upload →
-  headless disclose → **decrypt** → assert notification email in mailcrab.
+- ✅ **#204:** headless holder — self-test (in-process VALID proof) +
+  `TestPKGInitiatedDisclosureYieldsJWT` (PKG-initiated disclosure → valid JWT).
+- ✅ **#203:** `../stack` brings up PKG + irma-server + cryptify + mailcrab
+  (+ a minimal business-db) with the irma-server wired for test-scheme issuance.
+- ✅ **#205:** full golden flow — `TestGoldenFlow` seals, uploads, emails,
+  discloses (headless), decrypts, and verifies — no phone, no browser.
+
+## Prerequisites
+
+- **CGO + the native SQLCipher library.** irmago's `client.Client` pulls in
+  `eudi/storage` → `eudi/storage/db/sqlcipher`, which is a CGO binding. Building
+  or testing this module therefore needs a C toolchain and `libsqlcipher`
+  discoverable via `pkg-config` (`CGO_ENABLED=1`, the default). Without it,
+  `go build` fails with `undefined: Connector`. Install it with e.g.
+  `brew install sqlcipher` (macOS) or `apt-get install libsqlcipher-dev`
+  (Debian/Ubuntu). CI must install it before `go test`.
+- **Node** (for the golden-flow crypto oracle) and **Go 1.26+**.
 
 ## Build notes
 

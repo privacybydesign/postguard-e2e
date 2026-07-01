@@ -40,7 +40,8 @@ func main() {
 }
 
 func run() error {
-	irmagoRoot := env("IRMAGO_ROOT", "/Users/rubenhensen/Repos/irmago")
+	// Defaults to the standard sibling checkout (matches go.mod's replace); override with IRMAGO_ROOT.
+	irmagoRoot := env("IRMAGO_ROOT", "../../irmago")
 	schemesSrc := filepath.Join(irmagoRoot, "testdata", "irma_configuration")
 	privkeys := filepath.Join(irmagoRoot, "testdata", "privatekeys")
 
