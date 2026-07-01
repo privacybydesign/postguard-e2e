@@ -38,7 +38,9 @@ services:
     # not reachable yet. This blocks the PKG until /publickey actually responds.
     irma-ready:
         image: curlimages/curl:latest
-        command: ['sh', '-c', 'until curl -sf http://irma-server:8088/publickey >/dev/null; do echo "waiting for irma-server…"; sleep 2; done; echo "irma-server ready"']
+        # Bounded so a broken irma-server fails the stack fast (instead of
+        # hanging `up` until the job timeout, hiding the logs).
+        command: ['sh', '-c', 'for i in $(seq 1 90); do curl -sf http://irma-server:8088/publickey >/dev/null 2>&1 && { echo "irma-server ready after ${i} tries"; exit 0; }; echo "waiting for irma-server (${i})…"; sleep 2; done; echo "irma-server never became ready"; exit 1']
         depends_on:
             - irma-server
         networks: [pg]

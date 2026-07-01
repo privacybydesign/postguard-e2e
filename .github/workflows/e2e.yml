@@ -104,7 +104,12 @@ jobs:
       - name: Stack logs (on failure)
         if: failure()
         working-directory: postguard-e2e/stack
-        run: docker compose logs --no-color | tail -400
+        run: |
+          echo "::group::irma-server";  docker compose logs --no-color irma-server;  echo "::endgroup::"
+          echo "::group::irma-ready";   docker compose logs --no-color irma-ready;   echo "::endgroup::"
+          echo "::group::postguard-pkg"; docker compose logs --no-color postguard-pkg; echo "::endgroup::"
+          echo "::group::cryptify";     docker compose logs --no-color cryptify;     echo "::endgroup::"
+          echo "::group::business-db";  docker compose logs --no-color business-db;  echo "::endgroup::"
 
       - name: Tear down
         if: always()
