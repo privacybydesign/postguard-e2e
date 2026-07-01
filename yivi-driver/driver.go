@@ -1,8 +1,11 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -46,8 +49,10 @@ func NewYiviDriver(storagePath, irmaConfigAssets, eudiPath string) (*YiviDriver,
 		return nil, err
 	}
 	states := make(chan clientmodels.SessionState, 16)
-	var aesKey [32]byte
-	copy(aesKey[:], "asdfasdfasdfasdfasdfasdfasdfasdf")
+	aesKey, err := loadAESKey()
+	if err != nil {
+		return nil, err
+	}
 
 	c, err := pgclient.New(
 		storagePath,
@@ -65,6 +70,36 @@ func NewYiviDriver(storagePath, irmaConfigAssets, eudiPath string) (*YiviDriver,
 	// (session transports set ForceHTTPS = !DeveloperMode); production stays HTTPS-only.
 	c.SetPreferences(clientsettings.Preferences{DeveloperMode: true})
 	return &YiviDriver{c: c, states: states}, nil
+}
+
+// aesKeyEnv is the env var used to supply a fixed storage-encryption key so
+// the holder's on-disk state survives restarts. Its value must be 64 hex
+// characters (32 bytes). When unset, a fresh random key is generated per run,
+// which is the right default for the throwaway scratch storage this driver
+// uses in tests.
+const aesKeyEnv = "YIVI_DRIVER_AES_KEY"
+
+// loadAESKey returns the 32-byte key used to encrypt the holder's local
+// storage. It reads a hex-encoded key from aesKeyEnv when set (for storage
+// that must persist across restarts), otherwise it generates a cryptographically
+// random key.
+func loadAESKey() ([32]byte, error) {
+	var aesKey [32]byte
+	if v := os.Getenv(aesKeyEnv); v != "" {
+		b, err := hex.DecodeString(v)
+		if err != nil {
+			return aesKey, fmt.Errorf("%s must be hex-encoded: %w", aesKeyEnv, err)
+		}
+		if len(b) != len(aesKey) {
+			return aesKey, fmt.Errorf("%s must decode to %d bytes, got %d", aesKeyEnv, len(aesKey), len(b))
+		}
+		copy(aesKey[:], b)
+		return aesKey, nil
+	}
+	if _, err := io.ReadFull(rand.Reader, aesKey[:]); err != nil {
+		return aesKey, fmt.Errorf("generate storage key: %w", err)
+	}
+	return aesKey, nil
 }
 
 func (d *YiviDriver) Close() { d.c.Close() }

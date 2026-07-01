@@ -53,6 +53,7 @@ Defaults point at the sibling checkouts; override via env:
 | Var | Default | Purpose |
 |---|---|---|
 | `IRMAGO_ROOT` | `/Users/rubenhensen/Repos/irmago` | source of `testdata/irma_configuration` + `testdata/privatekeys` |
+| `YIVI_DRIVER_AES_KEY` | _(random per run)_ | hex-encoded 32-byte key for the holder's local storage encryption. Set it (64 hex chars) only when the on-disk state must survive restarts; otherwise a fresh random key is generated each run. |
 
 ## Tests
 
