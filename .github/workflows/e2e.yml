@@ -64,13 +64,16 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
+          cache-dependency-path: postguard-e2e/yivi-driver/go.sum
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
 
       - name: Generate throwaway irma-server JWT key
-        run: openssl genrsa -out postguard-e2e/stack/irma/jwt_privkey.pem 2048
+        run: |
+          mkdir -p postguard-e2e/stack/irma
+          openssl genrsa -out postguard-e2e/stack/irma/jwt_privkey.pem 2048
 
       - name: Boot the stack (builds PKG + cryptify from source — slow)
         working-directory: postguard-e2e/stack
