@@ -1,4 +1,4 @@
-# postguard-version-matrix
+# postguard-e2e
 
 A manual test harness that sweeps **published** versions of the PostGuard client
 libraries against a target server and reports which versions still work — so you
