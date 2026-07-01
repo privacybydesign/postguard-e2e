@@ -47,13 +47,37 @@ services:
             - '8087:8087'
         environment:
             - IRMA_SERVER=http://irma-server:8088
+            # Enables API-key auth (PG-… bearer) validated against business-db.
+            - DATABASE_URL=postgresql://postguard:postguard@business-db:5432/postguard
             - RUST_LOG=info
             - RUST_BACKTRACE=1
         volumes:
             - ../../postguard:/app
             - pkg-target:/app/target
         depends_on:
-            - irma-server
+            irma-server:
+                condition: service_started
+            business-db:
+                condition: service_healthy
+        networks: [pg]
+
+    # Minimal postguard-business DB: just the tables the PKG's API-key lookup
+    # reads, seeded with one org + one API key (see business-db/seed.sql).
+    business-db:
+        image: postgres:16-alpine
+        environment:
+            - POSTGRES_USER=postguard
+            - POSTGRES_PASSWORD=postguard
+            - POSTGRES_DB=postguard
+        healthcheck:
+            test: ['CMD-SHELL', 'pg_isready -U postguard -d postguard']
+            interval: 5s
+            timeout: 3s
+            retries: 10
+            start_period: 10s
+        volumes:
+            - ./business-db/seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro
+            - business-db-data:/var/lib/postgresql/data
         networks: [pg]
 
     # Encrypted file host + email delivery (built from ../../cryptify working tree).
@@ -106,3 +130,4 @@ volumes:
     pkg-target:
     cryptify-data:
     cryptify-target:
+    business-db-data:
