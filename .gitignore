@@ -7,3 +7,7 @@ report/*
 # stray build artifacts from dotnet sandboxes (should live under .sandbox/)
 bin/
 obj/
+
+# go: compiled binaries from `go build` in a main package dir
+yivi-driver/yividriver
+*.test

@@ -1,5 +1,22 @@
 # postguard-e2e
 
+The central end-to-end test harness for PostGuard (EPIC:
+[encryption4all/postguard#201](https://github.com/encryption4all/postguard/issues/201)).
+It has three parts:
+
+- **[`stack/`](stack/)** — a self-contained docker-compose stack (PKG + irma-server
+  + cryptify + mailcrab), with the irma-server wired for test-scheme issuance so
+  automated end-to-end flows (incl. decryption) are possible. *(issue #203)*
+- **[`yivi-driver/`](yivi-driver/)** — a **headless Yivi holder** that issues and
+  discloses credentials with no phone, so CI can drive a real disclosure → JWT →
+  decryption. *(issue #204)*
+- **version sweep** (below) — the original harness that sweeps published client
+  versions against a target server.
+
+---
+
+## Version sweep
+
 A manual test harness that sweeps **published** versions of the PostGuard client
 libraries against a target server and reports which versions still work — so you
 can find the breakage boundary before promoting a server change to production.

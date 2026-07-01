@@ -1,0 +1,108 @@
+# Self-contained e2e stack for the PostGuard harness.
+#
+# Unlike postguard-website's dev compose, the irma-server here is wired to
+# irmago's bundled TEST schemes + issuer PRIVATE keys, so a headless holder can
+# issue itself a credential and disclose it — the thing that makes automated
+# end-to-end (incl. decryption) possible. See EPIC issues #203 / #204.
+#
+# Build contexts point at the sibling working checkouts so we test CURRENT code
+# (e.g. the in-flight condiscon branch), not published images.
+#
+#   ../../postguard        -> the PKG (this repo's sibling)
+#   ../../irmago           -> Yivi test schemes + issuer private keys
+#   ../../postguard-website/docker/irma/jwt_privkey.pem -> irma-server JWT signing key
+
+services:
+    # Yivi/IRMA server, configured for issuance of the bundled test schemes.
+    irma-server:
+        image: ghcr.io/privacybydesign/irma:latest
+        command: >
+            server --no-auth -v
+            --url http://localhost:8088
+            --schemes-path /irma/schemes
+            --privkeys /irma/privkeys
+            --schemes-update 0
+            --jwt-privkey-file /etc/irma/jwt_privkey.pem
+        ports:
+            - '8088:8088'
+        volumes:
+            - ../../irmago/testdata/irma_configuration:/irma/schemes
+            - ../../irmago/testdata/privatekeys:/irma/privkeys:ro
+            - ../../postguard-website/docker/irma/jwt_privkey.pem:/etc/irma/jwt_privkey.pem:ro
+        networks: [pg]
+
+    # Private Key Generator (built from the sibling ../../postguard working tree).
+    postguard-pkg:
+        build:
+            context: ../../postguard
+            dockerfile: dev.Dockerfile
+        healthcheck:
+            test: ['CMD', 'curl', '-f', 'http://localhost:8087/health']
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_interval: 2s
+            start_period: 60s
+        ports:
+            - '8087:8087'
+        environment:
+            - IRMA_SERVER=http://irma-server:8088
+            - RUST_LOG=info
+            - RUST_BACKTRACE=1
+        volumes:
+            - ../../postguard:/app
+            - pkg-target:/app/target
+        depends_on:
+            - irma-server
+        networks: [pg]
+
+    # Encrypted file host + email delivery (built from ../../cryptify working tree).
+    # Its conf/config.dev.toml already points pkg_url -> postguard-pkg and
+    # smtp -> mailcrab, matching the service names here.
+    cryptify:
+        build:
+            context: ../../cryptify
+            dockerfile: dev.Dockerfile
+        healthcheck:
+            test: ['CMD', 'curl', '-f', 'http://localhost:8000/health']
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_interval: 2s
+            start_period: 60s
+        ports:
+            - '8000:8000'
+        environment:
+            - ROCKET_CONFIG=/app/config.toml
+            - RUST_LOG=info
+            - RUST_BACKTRACE=1
+        volumes:
+            - ../../cryptify/conf/config.dev.toml:/app/config.toml:ro
+            - ../../cryptify/src:/app/src
+            - ../../cryptify/templates:/app/templates
+            - ../../cryptify/build.rs:/app/build.rs:ro
+            - ../../cryptify/Cargo.lock:/app/Cargo.lock:ro
+            - cryptify-data:/app/data
+            - cryptify-target:/app/target
+        depends_on:
+            postguard-pkg:
+                condition: service_healthy
+        networks: [pg]
+
+    # SMTP sink so recipient-notification emails are captured, not sent.
+    # Web UI on :1080, SMTP on :1025.
+    mailcrab:
+        image: marlonb/mailcrab:latest
+        ports:
+            - '1080:1080'
+            - '1025:1025'
+        networks: [pg]
+
+networks:
+    pg:
+        driver: bridge
+
+volumes:
+    pkg-target:
+    cryptify-data:
+    cryptify-target:
