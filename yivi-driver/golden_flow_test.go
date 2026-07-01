@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -33,12 +34,14 @@ func TestGoldenFlow(t *testing.T) {
 	}
 
 	const (
-		attrType       = "irma-demo.RU.studentCard.level"
-		attrVal        = "PhD"
-		recipientID    = "phd-holder"
-		recipientEmail = "recipient@golden.test"
+		attrType    = "irma-demo.RU.studentCard.level"
+		attrVal     = "PhD"
+		recipientID = "phd-holder"
 	)
 	ts := time.Now().Unix()
+	// Unique per run so the mailcrab assertion below can't match a notification
+	// left over from a previous run against the same live stack.
+	recipientEmail := fmt.Sprintf("recipient+%d@golden.test", time.Now().UnixNano())
 	plaintext := []byte("golden-flow: the eagle lands at 0400")
 
 	// Headless holder, issued the credential it will disclose for both roles.

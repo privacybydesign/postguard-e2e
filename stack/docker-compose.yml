@@ -75,9 +75,11 @@ services:
             timeout: 3s
             retries: 10
             start_period: 10s
+        # No persistent volume: the DB is ephemeral so editing seed.sql and
+        # recreating the container re-applies it (Postgres only runs
+        # /docker-entrypoint-initdb.d scripts on an empty data dir).
         volumes:
             - ./business-db/seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro
-            - business-db-data:/var/lib/postgresql/data
         networks: [pg]
 
     # Encrypted file host + email delivery (built from ../../cryptify working tree).
@@ -130,4 +132,3 @@ volumes:
     pkg-target:
     cryptify-data:
     cryptify-target:
-    business-db-data:

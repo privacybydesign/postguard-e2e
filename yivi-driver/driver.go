@@ -29,10 +29,9 @@ func (h *chanHandler) UpdateSession(s clientmodels.SessionState) { h.ch <- s }
 // (Appium) backend can implement the same "run this session pointer to
 // completion" contract later.
 type YiviDriver struct {
-	c        *pgclient.Client
-	states   chan clientmodels.SessionState
-	grantErr chan error
-	nextID   int
+	c      *pgclient.Client
+	states chan clientmodels.SessionState
+	nextID int
 }
 
 // NewYiviDriver builds a holder. storagePath and eudiPath are (created)
@@ -65,7 +64,7 @@ func NewYiviDriver(storagePath, irmaConfigAssets, eudiPath string) (*YiviDriver,
 	// DeveloperMode lets the holder talk to a plain-HTTP dev irma-server
 	// (session transports set ForceHTTPS = !DeveloperMode); production stays HTTPS-only.
 	c.SetPreferences(clientsettings.Preferences{DeveloperMode: true})
-	return &YiviDriver{c: c, states: states, grantErr: make(chan error, 4)}, nil
+	return &YiviDriver{c: c, states: states}, nil
 }
 
 func (d *YiviDriver) Close() { d.c.Close() }
@@ -84,6 +83,11 @@ func (d *YiviDriver) RunSession(qr *irma.Qr) error {
 	}
 	d.c.NewSession(id, string(j))
 
+	// Per-session error channel so a late grant failure can't leak into a
+	// subsequent RunSession (buffered so a grant that lands after we've already
+	// returned via timeout doesn't block its goroutine).
+	grantErr := make(chan error, 1)
+
 	for {
 		select {
 		case st := <-d.states:
@@ -99,13 +103,13 @@ func (d *YiviDriver) RunSession(qr *irma.Qr) error {
 				// HandleUserInteraction blocks until the client processes the
 				// grant and emits the next state, so run it off the polling
 				// goroutine (mirrors irmago's own test helper).
-				go d.grant(id, choices)
+				go d.grant(id, choices, grantErr)
 			case clientmodels.Status_Success:
 				return nil
 			case clientmodels.Status_Error, clientmodels.Status_Dismissed:
 				return fmt.Errorf("session %d ended with %s: %+v", id, st.Status, st.Error)
 			}
-		case err := <-d.grantErr:
+		case err := <-grantErr:
 			return err
 		case <-time.After(30 * time.Second):
 			return fmt.Errorf("session %d timed out waiting for completion", id)
@@ -113,7 +117,7 @@ func (d *YiviDriver) RunSession(qr *irma.Qr) error {
 	}
 }
 
-func (d *YiviDriver) grant(id int, choices []clientmodels.DisclosureDisconSelection) {
+func (d *YiviDriver) grant(id int, choices []clientmodels.DisclosureDisconSelection, grantErr chan<- error) {
 	if err := d.c.HandleUserInteraction(clientmodels.SessionUserInteraction{
 		SessionId: id,
 		Type:      clientmodels.UI_Permission,
@@ -123,7 +127,7 @@ func (d *YiviDriver) grant(id int, choices []clientmodels.DisclosureDisconSelect
 		},
 	}); err != nil {
 		// Surface it so RunSession returns the real cause instead of a 30s timeout.
-		d.grantErr <- fmt.Errorf("granting permission for session %d: %w", id, err)
+		grantErr <- fmt.Errorf("granting permission for session %d: %w", id, err)
 	}
 }
 
