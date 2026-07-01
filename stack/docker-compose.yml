@@ -33,6 +33,16 @@ services:
             - ./irma/jwt_privkey.pem:/etc/irma/jwt_privkey.pem:ro
         networks: [pg]
 
+    # One-shot gate: the irma image is shell-less (no healthcheck possible), and
+    # the PKG fetches irma-server's /publickey once at boot and CRASHES if it's
+    # not reachable yet. This blocks the PKG until /publickey actually responds.
+    irma-ready:
+        image: curlimages/curl:latest
+        command: ['sh', '-c', 'until curl -sf http://irma-server:8088/publickey >/dev/null; do echo "waiting for irma-server…"; sleep 2; done; echo "irma-server ready"']
+        depends_on:
+            - irma-server
+        networks: [pg]
+
     # Private Key Generator (built from the sibling ../../postguard working tree).
     postguard-pkg:
         build:
@@ -57,8 +67,8 @@ services:
             - ../../postguard:/app
             - pkg-target:/app/target
         depends_on:
-            irma-server:
-                condition: service_started
+            irma-ready:
+                condition: service_completed_successfully
             business-db:
                 condition: service_healthy
         networks: [pg]
