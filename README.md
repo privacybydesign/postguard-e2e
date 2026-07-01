@@ -1,5 +1,7 @@
 # postguard-e2e
 
+> Part of [PostGuard](https://postguard.eu) · full docs at [docs.postguard.eu](https://docs.postguard.eu)
+
 The central end-to-end test harness for PostGuard (EPIC:
 [encryption4all/postguard#201](https://github.com/encryption4all/postguard/issues/201)).
 It has three parts:
@@ -110,3 +112,16 @@ src/
 .sandbox/            throwaway per-version installs (gitignored)
 report/              generated reports (gitignored)
 ```
+
+## Development
+
+Each part has its own README with build/run instructions:
+
+- [`stack/`](stack/) — the local services (`docker compose up -d`).
+- [`yivi-driver/`](yivi-driver/) — the headless holder + e2e tests. Note its
+  prerequisites (CGO + SQLCipher).
+- Version sweep — `npm install`, then `npm run run:all` (see above).
+
+## License
+
+MIT — part of the [PostGuard](https://postguard.eu) project.

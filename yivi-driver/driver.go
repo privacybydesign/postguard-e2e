@@ -15,7 +15,9 @@ import (
 
 // chanHandler implements clientmodels.SessionHandler by forwarding every
 // session-state update onto a channel the driver polls.
-type chanHandler struct{ ch chan clientmodels.SessionState }
+type chanHandler struct {
+	ch chan clientmodels.SessionState
+}
 
 func (h *chanHandler) UpdateSession(s clientmodels.SessionState) { h.ch <- s }
 
@@ -27,9 +29,10 @@ func (h *chanHandler) UpdateSession(s clientmodels.SessionState) { h.ch <- s }
 // (Appium) backend can implement the same "run this session pointer to
 // completion" contract later.
 type YiviDriver struct {
-	c      *pgclient.Client
-	states chan clientmodels.SessionState
-	nextID int
+	c        *pgclient.Client
+	states   chan clientmodels.SessionState
+	grantErr chan error
+	nextID   int
 }
 
 // NewYiviDriver builds a holder. storagePath and eudiPath are (created)
@@ -62,7 +65,7 @@ func NewYiviDriver(storagePath, irmaConfigAssets, eudiPath string) (*YiviDriver,
 	// DeveloperMode lets the holder talk to a plain-HTTP dev irma-server
 	// (session transports set ForceHTTPS = !DeveloperMode); production stays HTTPS-only.
 	c.SetPreferences(clientsettings.Preferences{DeveloperMode: true})
-	return &YiviDriver{c: c, states: states}, nil
+	return &YiviDriver{c: c, states: states, grantErr: make(chan error, 4)}, nil
 }
 
 func (d *YiviDriver) Close() { d.c.Close() }
@@ -102,6 +105,8 @@ func (d *YiviDriver) RunSession(qr *irma.Qr) error {
 			case clientmodels.Status_Error, clientmodels.Status_Dismissed:
 				return fmt.Errorf("session %d ended with %s: %+v", id, st.Status, st.Error)
 			}
+		case err := <-d.grantErr:
+			return err
 		case <-time.After(30 * time.Second):
 			return fmt.Errorf("session %d timed out waiting for completion", id)
 		}
@@ -109,14 +114,17 @@ func (d *YiviDriver) RunSession(qr *irma.Qr) error {
 }
 
 func (d *YiviDriver) grant(id int, choices []clientmodels.DisclosureDisconSelection) {
-	_ = d.c.HandleUserInteraction(clientmodels.SessionUserInteraction{
+	if err := d.c.HandleUserInteraction(clientmodels.SessionUserInteraction{
 		SessionId: id,
 		Type:      clientmodels.UI_Permission,
 		Payload: clientmodels.SessionPermissionInteractionPayload{
 			Granted:           true,
 			DisclosureChoices: choices,
 		},
-	})
+	}); err != nil {
+		// Surface it so RunSession returns the real cause instead of a 30s timeout.
+		d.grantErr <- fmt.Errorf("granting permission for session %d: %w", id, err)
+	}
 }
 
 // disclosureChoices auto-selects the first owned option for each disjunction

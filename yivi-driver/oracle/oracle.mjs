@@ -67,6 +67,9 @@ try {
     throw new Error(`unknown op: ${job.op}`);
   }
 } catch (e) {
-  process.stdout.write(JSON.stringify({ ok: false, error: String((e && e.stack) || e) }));
-  process.exit(1);
+  // Exit only after stdout is flushed — otherwise exiting a pipe can truncate
+  // the JSON and the Go caller sees "oracle produced no JSON" instead of this.
+  process.stdout.write(JSON.stringify({ ok: false, error: String((e && e.stack) || e) }), () =>
+    process.exit(1)
+  );
 }

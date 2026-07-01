@@ -60,13 +60,16 @@ func pkgFetchUSK(pkgURL, jwt string, ts int64) (json.RawMessage, error) {
 	return r.Key, nil
 }
 
-// pkgFetchSigningKey gets IBS signing keys for the disclosed identity (Bearer
-// JWT). pubSignID is the sender's public signing identity.
-func pkgFetchSigningKey(pkgURL, jwt string, pubSignID []conItem) (pub, priv json.RawMessage, err error) {
+// pkgFetchSigningKey gets IBS signing keys. `bearer` is the Authorization
+// token — either a Yivi disclosure JWT or a `PG-` business API key (the API-key
+// path is what the golden flow uses; the PKG then fills the signing identity
+// from the business DB and ignores pubSignID). pubSignID is the sender's public
+// signing identity, used only on the JWT path.
+func pkgFetchSigningKey(pkgURL, bearer string, pubSignID []conItem) (pub, priv json.RawMessage, err error) {
 	body, _ := json.Marshal(map[string]any{"pubSignId": pubSignID})
 	req, _ := http.NewRequest(http.MethodPost, pkgURL+"/v2/irma/sign/key", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+jwt)
+	req.Header.Set("Authorization", "Bearer "+bearer)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, nil, err

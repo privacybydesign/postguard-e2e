@@ -85,6 +85,17 @@ Defaults point at the sibling checkouts; override via env:
 - ✅ **#205:** full golden flow — `TestGoldenFlow` seals, uploads, emails,
   discloses (headless), decrypts, and verifies — no phone, no browser.
 
+## Prerequisites
+
+- **CGO + the native SQLCipher library.** irmago's `client.Client` pulls in
+  `eudi/storage` → `eudi/storage/db/sqlcipher`, which is a CGO binding. Building
+  or testing this module therefore needs a C toolchain and `libsqlcipher`
+  discoverable via `pkg-config` (`CGO_ENABLED=1`, the default). Without it,
+  `go build` fails with `undefined: Connector`. Install it with e.g.
+  `brew install sqlcipher` (macOS) or `apt-get install libsqlcipher-dev`
+  (Debian/Ubuntu). CI must install it before `go test`.
+- **Node** (for the golden-flow crypto oracle) and **Go 1.26+**.
+
 ## Build notes
 
 `go.mod` uses a `replace` onto the local irmago (EUDI) checkout for development.

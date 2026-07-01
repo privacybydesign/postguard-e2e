@@ -16,9 +16,11 @@ is what makes automated end-to-end tests (including decryption) possible.
 | `mailcrab` | 1080 (UI), 1025 (SMTP) | Mail sink — recipient notifications are captured, not sent. |
 | `business-db` | (internal) | Postgres with a *minimal* business schema + one seeded API key, so the PKG can do API-key signing (`business-db/seed.sql`). |
 
-Build contexts point at sibling checkouts (`../../postguard`, `../../cryptify`,
-`../../irmago`), so the stack exercises whatever you have checked out — no
-published images, no submodules.
+Build contexts and bind-mounts point at sibling checkouts (`../../postguard`,
+`../../cryptify`, `../../irmago`), so the stack exercises whatever you have
+checked out — no published images, no submodules. The irma-server also bind-mounts
+`../../postguard-website/docker/irma/jwt_privkey.pem` (read-only) as its JWT
+signing key, so `postguard-website` must be checked out alongside too.
 
 ## Usage
 
