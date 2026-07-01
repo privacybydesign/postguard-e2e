@@ -43,9 +43,10 @@ completes disclosures against the same server the PKG uses internally
 ## Notes
 
 - The PKG gets `DATABASE_URL` pointing at `business-db`, enabling API-key auth.
-  The seed provisions one org (`sender@golden.test`) and the key
-  `PG-goldenflowe2ekey` with `signing_attrs = {"email": true}` — this is a test
-  fixture, **not** the real business schema. `business-db` has no persistent
+  The seed provisions one org (`sender@golden.test`) and one API key (its
+  SHA-256 hash only; supply the raw key via `PG_API_KEY`) with
+  `signing_attrs = {"email": true}` — this is a test fixture, **not** the real
+  business schema. `business-db` has no persistent
   volume, so recreating it (`docker compose up -d --force-recreate business-db`,
   or any `down`+`up`) re-applies `seed.sql`.
 - The irma-server runs `--no-auth` (dev only): requestors need no JWT auth.
