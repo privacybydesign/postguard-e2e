@@ -91,7 +91,10 @@ func TestGoldenFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("mpk: %v", err)
 	}
-	apiKey := env("PG_API_KEY", "PG-goldenflowe2ekey")
+	apiKey := env("PG_API_KEY", "")
+	if apiKey == "" {
+		t.Skip("PG_API_KEY not set")
+	}
 	pub, priv, err := pkgFetchSigningKey(pkgURL, apiKey, []conItem{})
 	if err != nil {
 		t.Fatalf("signing key (api key): %v", err)

@@ -10,8 +10,8 @@
 -- This is NOT the real business schema (owned by postguard-business); it is a
 -- test fixture. `signing_attrs = {"email": true}` makes the signing identity
 -- carry pbdf.sidn-pbdf.email.email = signing_email, which cryptify requires as
--- the sender's email. The raw key is `PG-goldenflowe2ekey`; the PKG SHA-256
--- hashes the full bearer token (incl. the "PG-" prefix) and looks up the hash.
+-- the sender's email. The PKG SHA-256 hashes the full bearer token (incl. the
+-- "PG-" prefix) and looks up the hash.
 
 CREATE TABLE organizations (
     id              uuid PRIMARY KEY,
@@ -38,11 +38,11 @@ CREATE TABLE business_api_keys (
 INSERT INTO organizations (id, signing_email, name)
 VALUES ('00000000-0000-0000-0000-0000000000a1', 'sender@golden.test', 'Golden Flow Test Org');
 
--- key_hash = sha256_hex('PG-goldenflowe2ekey')
+-- key_hash = sha256_hex(PG_API_KEY)  -- raw key kept out of committed source; supply via PG_API_KEY
 INSERT INTO business_api_keys (key_hash, org_id, signing_attrs, expires_at)
 VALUES (
     'e8cbeb3d2c23c94ab280deceb9d3b6ae713c2a49de77a047caa33f57aa781091',
     '00000000-0000-0000-0000-0000000000a1',
     '{"email": true}'::jsonb,
-    NOW() + INTERVAL '3650 days'
+    NOW() + INTERVAL '365 days'
 );
