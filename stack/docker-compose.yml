@@ -61,24 +61,29 @@ services:
         networks: [pg]
 
     # Minimal postguard-business DB: just the tables the PKG's API-key lookup
-    # reads, seeded with one org + one API key (see business-db/seed.sql).
+    # reads, seeded with one org (01-schema.sql) + one API key derived from
+    # PG_API_KEY at init (02-provision-api-key.sh).
     business-db:
         image: postgres:16-alpine
         environment:
             - POSTGRES_USER=postguard
             - POSTGRES_PASSWORD=postguard
             - POSTGRES_DB=postguard
+            # Passed through from the host env; 02-provision-api-key.sh derives
+            # key_hash = sha256(PG_API_KEY) at init. Unset => no key row seeded.
+            - PG_API_KEY
         healthcheck:
             test: ['CMD-SHELL', 'pg_isready -U postguard -d postguard']
             interval: 5s
             timeout: 3s
             retries: 10
             start_period: 10s
-        # No persistent volume: the DB is ephemeral so editing seed.sql and
-        # recreating the container re-applies it (Postgres only runs
+        # No persistent volume: the DB is ephemeral so editing the init scripts
+        # and recreating the container re-applies them (Postgres only runs
         # /docker-entrypoint-initdb.d scripts on an empty data dir).
         volumes:
-            - ./business-db/seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro
+            - ./business-db/01-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+            - ./business-db/02-provision-api-key.sh:/docker-entrypoint-initdb.d/02-provision-api-key.sh:ro
         networks: [pg]
 
     # Encrypted file host + email delivery (built from ../../cryptify working tree).
