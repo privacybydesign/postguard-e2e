@@ -38,10 +38,13 @@ CREATE TABLE business_api_keys (
 INSERT INTO organizations (id, signing_email, name)
 VALUES ('00000000-0000-0000-0000-0000000000a1', 'sender@golden.test', 'Golden Flow Test Org');
 
--- key_hash = sha256_hex(PG_API_KEY)  -- raw key kept out of committed source; supply via PG_API_KEY
+-- key_hash = sha256_hex(PG_API_KEY)
+-- PLACEHOLDER: the value below is a non-functional all-zeros sentinel, NOT a real hash.
+-- Operators must supply the real SHA-256 hash via the PG_API_KEY environment variable at
+-- deploy time; the raw key and its hash must never be committed to source.
 INSERT INTO business_api_keys (key_hash, org_id, signing_attrs, expires_at)
 VALUES (
-    'e8cbeb3d2c23c94ab280deceb9d3b6ae713c2a49de77a047caa33f57aa781091',
+    '0000000000000000000000000000000000000000000000000000000000000000',
     '00000000-0000-0000-0000-0000000000a1',
     '{"email": true}'::jsonb,
     NOW() + INTERVAL '365 days'

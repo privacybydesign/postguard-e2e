@@ -50,7 +50,6 @@ services:
             # Enables API-key auth (PG-… bearer) validated against business-db.
             - DATABASE_URL=postgresql://postguard:postguard@business-db:5432/postguard
             - RUST_LOG=info
-            - RUST_BACKTRACE=1
         volumes:
             - ../../postguard:/app
             - pkg-target:/app/target
@@ -101,7 +100,6 @@ services:
         environment:
             - ROCKET_CONFIG=/app/config.toml
             - RUST_LOG=info
-            - RUST_BACKTRACE=1
         volumes:
             - ../../cryptify/conf/config.dev.toml:/app/config.toml:ro
             - ../../cryptify/src:/app/src
