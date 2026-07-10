@@ -38,11 +38,6 @@ CREATE TABLE business_api_keys (
 INSERT INTO organizations (id, signing_email, name)
 VALUES ('00000000-0000-0000-0000-0000000000a1', 'sender@golden.test', 'Golden Flow Test Org');
 
--- key_hash = sha256_hex(PG_API_KEY)  -- raw key kept out of committed source; supply via PG_API_KEY
-INSERT INTO business_api_keys (key_hash, org_id, signing_attrs, expires_at)
-VALUES (
-    'e8cbeb3d2c23c94ab280deceb9d3b6ae713c2a49de77a047caa33f57aa781091',
-    '00000000-0000-0000-0000-0000000000a1',
-    '{"email": true}'::jsonb,
-    NOW() + INTERVAL '365 days'
-);
+-- The business_api_keys row is provisioned by 02-provision-api-key.sh, which
+-- derives key_hash = sha256_hex(PG_API_KEY) at init time, so neither the raw
+-- key nor its hash is committed to source.

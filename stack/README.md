@@ -14,7 +14,7 @@ is what makes automated end-to-end tests (including decryption) possible.
 | `postguard-pkg` | 8087 | PKG, built from the sibling `../../postguard` working tree (tests current code). |
 | `cryptify` | 8000 | Encrypted file host + email delivery, from `../../cryptify`. |
 | `mailcrab` | 1080 (UI), 1025 (SMTP) | Mail sink — recipient notifications are captured, not sent. |
-| `business-db` | (internal) | Postgres with a *minimal* business schema + one seeded API key, so the PKG can do API-key signing (`business-db/seed.sql`). |
+| `business-db` | (internal) | Postgres with a *minimal* business schema + one seeded API key, so the PKG can do API-key signing (`business-db/01-schema.sql` + `02-provision-api-key.sh`). |
 
 Build contexts and bind-mounts point at sibling checkouts (`../../postguard`,
 `../../cryptify`, `../../irmago`), so the stack exercises whatever you have
@@ -43,12 +43,13 @@ completes disclosures against the same server the PKG uses internally
 ## Notes
 
 - The PKG gets `DATABASE_URL` pointing at `business-db`, enabling API-key auth.
-  The seed provisions one org (`sender@golden.test`) and one API key (its
-  SHA-256 hash only; supply the raw key via `PG_API_KEY`) with
+  The init scripts provision one org (`sender@golden.test`) and one API key
+  whose `key_hash` is derived at init as `sha256(PG_API_KEY)` — so the raw key
+  and its hash stay out of source; set `PG_API_KEY` to enable API-key auth.
   `signing_attrs = {"email": true}` — this is a test fixture, **not** the real
   business schema. `business-db` has no persistent
   volume, so recreating it (`docker compose up -d --force-recreate business-db`,
-  or any `down`+`up`) re-applies `seed.sql`.
+  or any `down`+`up`) re-applies the init scripts.
 - The irma-server runs `--no-auth` (dev only): requestors need no JWT auth.
 - Issuer private keys come from `../../irmago/testdata/privatekeys`; these are
   Yivi's public *test* keys, safe to use — never production keys.
