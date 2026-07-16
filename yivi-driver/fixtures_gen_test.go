@@ -134,7 +134,10 @@ func TestGenerateCryptoFixtures(t *testing.T) {
 	mem := sealJob("sealMem")
 
 	// Self-check both before committing anything: unseal must round-trip.
-	for _, c := range []struct{ op, name string; ct []byte }{
+	for _, c := range []struct {
+		op, name string
+		ct       []byte
+	}{
 		{"unseal", "stream", stream},
 		{"unsealMem", "mem", mem},
 	} {
@@ -156,13 +159,13 @@ func TestGenerateCryptoFixtures(t *testing.T) {
 	}
 
 	meta := map[string]any{
-		"sealedBy":    "@e4a/pg-wasm@" + wasmVersion,
-		"generatedAt": time.Now().UTC().Format(time.RFC3339),
-		"recipientId": recipientID,
-		"con":         []conItem{{T: attrType, V: attrVal}},
-		"ts":          ts,
+		"sealedBy":     "@e4a/pg-wasm@" + wasmVersion,
+		"generatedAt":  time.Now().UTC().Format(time.RFC3339),
+		"recipientId":  recipientID,
+		"con":          []conItem{{T: attrType, V: attrVal}},
+		"ts":           ts,
 		"plaintextB64": base64.StdEncoding.EncodeToString(plaintext),
-		"senderEmail": "sender@golden.test",
+		"senderEmail":  "sender@golden.test",
 		"files": map[string]string{
 			"stream.bin": "streaming container (sealStream / cryptify / pg-js upload)",
 			"mem.bin":    "in-memory container (seal / pg-js toBytes)",

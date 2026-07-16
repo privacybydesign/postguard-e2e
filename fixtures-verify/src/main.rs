@@ -40,12 +40,12 @@ struct UskResponse {
 
 fn verify_set(dir: &Path) -> Result<String, String> {
     let read = |name: &str| fs::read(dir.join(name)).map_err(|e| format!("read {name}: {e}"));
-    let meta: Meta = serde_json::from_slice(&read("meta.json")?)
-        .map_err(|e| format!("parse meta.json: {e}"))?;
-    let vk: Parameters<VerifyingKey> = serde_json::from_slice(&read("vk.json")?)
-        .map_err(|e| format!("parse vk.json: {e}"))?;
-    let usk: UskResponse = serde_json::from_slice(&read("usk.json")?)
-        .map_err(|e| format!("parse usk.json: {e}"))?;
+    let meta: Meta =
+        serde_json::from_slice(&read("meta.json")?).map_err(|e| format!("parse meta.json: {e}"))?;
+    let vk: Parameters<VerifyingKey> =
+        serde_json::from_slice(&read("vk.json")?).map_err(|e| format!("parse vk.json: {e}"))?;
+    let usk: UskResponse =
+        serde_json::from_slice(&read("usk.json")?).map_err(|e| format!("parse usk.json: {e}"))?;
     let want = base64_decode(&meta.plaintext_b64).map_err(|e| format!("meta plaintext: {e}"))?;
 
     // Streaming container.
@@ -128,7 +128,10 @@ fn main() -> ExitCode {
         }
         match verify_set(&dir) {
             Ok(sealed_by) => {
-                println!("ok  {} (sealed by {sealed_by}) — stream + mem unseal", dir.file_name().unwrap().to_string_lossy());
+                println!(
+                    "ok  {} (sealed by {sealed_by}) — stream + mem unseal",
+                    dir.file_name().unwrap().to_string_lossy()
+                );
                 sets += 1;
             }
             Err(e) => {

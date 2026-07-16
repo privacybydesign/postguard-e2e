@@ -29,6 +29,37 @@ on:
       - '.github/workflows/e2e.yml'
 
 jobs:
+  # Formatting gate: cargo fmt for the Rust verifier, gofmt for the Go driver.
+  # Pure text checks — no builds, no native deps (gofmt doesn't compile, so
+  # yivi-driver's CGO/sqlcipher requirement doesn't apply).
+  fmt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: cargo fmt --check (fixtures-verify)
+        working-directory: fixtures-verify
+        run: cargo fmt --check
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: gofmt (yivi-driver)
+        run: |
+          unformatted=$(gofmt -l yivi-driver)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed on:"; echo "$unformatted"
+            gofmt -d yivi-driver
+            exit 1
+          fi
+
   # Fast, stack-free wire-format guard (issue #206): the committed golden
   # ciphertexts must unseal with BOTH the pinned published @e4a/pg-wasm (client
   # side) and the current postguard main's pg-core (drift detector). Red here
