@@ -172,22 +172,27 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      # Exposes ACTIONS_RUNTIME_TOKEN / ACTIONS_CACHE_URL to the shell so the
+      # raw `buildx bake` below can use the type=gha cache backend.
+      - uses: crazy-max/ghaction-github-runtime@v3
+
       # Build the two Rust images with the GitHub Actions layer cache
       # (issue #239). The expensive layer is cargo-chef's dependency compile;
       # it re-caches only when the upstream Cargo.lock changes, dropping a
       # warm run from ~20-30 min to a few minutes. Separate scopes so the two
       # images don't evict each other.
+      #
+      # Plain `buildx bake` from the stack directory (not the bake-action):
+      # the compose file's relative build contexts (../../postguard) must
+      # resolve against stack/, and running from there guarantees it.
       - name: Build stack images (GHA layer cache)
-        uses: docker/bake-action@v6
-        with:
-          source: .
-          files: postguard-e2e/stack/docker-compose.yml
-          load: true
-          set: |
-            postguard-pkg.cache-from=type=gha,scope=pkg
-            postguard-pkg.cache-to=type=gha,scope=pkg,mode=max
-            cryptify.cache-from=type=gha,scope=cryptify
-            cryptify.cache-to=type=gha,scope=cryptify,mode=max
+        working-directory: postguard-e2e/stack
+        run: |
+          docker buildx bake -f docker-compose.yml --load \
+            --set 'postguard-pkg.cache-from=type=gha,scope=pkg' \
+            --set 'postguard-pkg.cache-to=type=gha,scope=pkg,mode=max' \
+            --set 'cryptify.cache-from=type=gha,scope=cryptify' \
+            --set 'cryptify.cache-to=type=gha,scope=cryptify,mode=max'
 
       - name: Boot the stack
         working-directory: postguard-e2e/stack
