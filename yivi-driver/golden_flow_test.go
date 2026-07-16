@@ -27,7 +27,7 @@ func TestGoldenFlow(t *testing.T) {
 	irmaURL := env("PG_IRMA_URL", "http://localhost:8088")
 	cryptifyURL := env("PG_CRYPTIFY_URL", "http://localhost:8000")
 	mailcrabURL := env("PG_MAILCRAB_URL", "http://localhost:1080")
-	schemesAssets := filepath.Join(env("IRMAGO_ROOT", "../../irmago"), "testdata", "irma_configuration")
+	schemesAssets := schemeRoot()
 
 	if !reachable(pkgURL+"/health") || !reachable(cryptifyURL+"/health") {
 		t.Skipf("stack not reachable (PKG %s, cryptify %s) — cd ../stack && docker compose up -d", pkgURL, cryptifyURL)
@@ -172,6 +172,7 @@ func TestGoldenFlow(t *testing.T) {
 	// Assert the cryptographically verified sender identity — the whole point
 	// of signing is that the recipient learns who sent it.
 	const wantSender = "sender@golden.test"
+	wantSenderAttr := emailAttribute()
 	var senderID struct {
 		Public struct {
 			Con []struct {
@@ -185,12 +186,12 @@ func TestGoldenFlow(t *testing.T) {
 	}
 	foundSender := false
 	for _, a := range senderID.Public.Con {
-		if a.T == "pbdf.sidn-pbdf.email.email" && a.V == wantSender {
+		if a.T == wantSenderAttr && a.V == wantSender {
 			foundSender = true
 		}
 	}
 	if !foundSender {
-		t.Fatalf("verified sender identity missing pbdf.sidn-pbdf.email.email=%s; got %s", wantSender, string(unsealRes["sender"]))
+		t.Fatalf("verified sender identity missing %s=%s; got %s", wantSenderAttr, wantSender, string(unsealRes["sender"]))
 	}
 	t.Logf("decrypted OK (%d bytes); verified sender=%s", len(got), wantSender)
 }

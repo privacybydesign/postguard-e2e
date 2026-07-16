@@ -48,11 +48,13 @@ plain-HTTP dev irma-server; production irma-servers are HTTPS-only.
 
 ## Configuration
 
-Defaults point at the sibling checkouts; override via env:
+Defaults point at the sibling checkouts / provisioned scheme; override via env:
 
 | Var | Default | Purpose |
 |---|---|---|
-| `IRMAGO_ROOT` | `/Users/rubenhensen/Repos/irmago` | source of `testdata/irma_configuration` + `testdata/privatekeys` |
+| `IRMA_SCHEME_ROOT` | `../stack/schemes/irma_configuration` | scheme dir (holds `irma-demo/`) the stack tests trust — the pinned real scheme from `stack/schemes/provision.sh`. |
+| `IRMA_EMAIL_ATTRIBUTE` | `irma-demo.sidn-pbdf.email.email` | sender email attribute type the stack signs with; must match the PKG/cryptify knobs (postguard#236). |
+| `IRMAGO_ROOT` | `/Users/rubenhensen/Repos/irmago` | only used by the `go run .` self-test's in-process server (irmago's bundled testdata). |
 | `YIVI_DRIVER_AES_KEY` | _(random per run)_ | hex-encoded 32-byte key for the holder's local storage encryption. Set it (64 hex chars) only when the on-disk state must survive restarts; otherwise a fresh random key is generated each run. |
 
 ## Tests

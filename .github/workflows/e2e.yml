@@ -162,6 +162,13 @@ jobs:
         with:
           node-version: '22'
 
+      # Fetch the pinned, published irma-demo scheme (with sidn-pbdf.email +
+      # issuer keys) that the irma-server serves and the holder trusts. Gitignored
+      # + pinned, so this is the single source of the scheme for local and CI.
+      - name: Provision irma-demo scheme
+        working-directory: postguard-e2e/stack/schemes
+        run: ./provision.sh
+
       - name: Generate throwaway irma-server JWT key
         # chmod 644: openssl creates the key 0600 (owner: runner), but the irma
         # container reads it through the bind mount as a different non-root

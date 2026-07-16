@@ -22,7 +22,7 @@ import (
 func TestPKGInitiatedDisclosureYieldsJWT(t *testing.T) {
 	pkgURL := env("PG_PKG_URL", "http://localhost:8087")
 	irmaURL := env("PG_IRMA_URL", "http://localhost:8088")
-	schemesAssets := filepath.Join(env("IRMAGO_ROOT", "../../irmago"), "testdata", "irma_configuration")
+	schemesAssets := schemeRoot()
 
 	if !reachable(pkgURL + "/health") {
 		t.Skipf("PKG not reachable at %s — start the e2e stack (cd ../stack && docker compose up -d)", pkgURL)

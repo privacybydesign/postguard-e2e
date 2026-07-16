@@ -33,7 +33,7 @@ func TestGenerateCryptoFixtures(t *testing.T) {
 	}
 	pkgURL := env("PG_PKG_URL", "http://localhost:8087")
 	irmaURL := env("PG_IRMA_URL", "http://localhost:8088")
-	schemesAssets := filepath.Join(env("IRMAGO_ROOT", "../../irmago"), "testdata", "irma_configuration")
+	schemesAssets := schemeRoot()
 	apiKey := os.Getenv("PG_API_KEY")
 	if apiKey == "" {
 		t.Fatal("PG_API_KEY must be set (the seeded business API key) to fetch the signing key")
