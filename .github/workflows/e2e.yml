@@ -90,6 +90,12 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      # Cache the cargo registry + target dir (keyed on the manifests), so
+      # the pg-core build here takes seconds on a warm cache (issue #239).
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: postguard-e2e/fixtures-verify
+
       # No --locked: pg-core is a path dep whose transitive versions follow
       # postguard main; pinning them here would only produce false reds.
       - name: Verify with current pg-core
@@ -157,9 +163,35 @@ jobs:
           openssl genrsa -out postguard-e2e/stack/irma/jwt_privkey.pem 2048
           chmod 644 postguard-e2e/stack/irma/jwt_privkey.pem
 
-      - name: Boot the stack (builds PKG + cryptify from source — slow)
+      # Provision an ephemeral business API key for this run. business-db
+      # derives its seeded key_hash from this at init, and the golden flow
+      # SKIPS without it — so this must be set before `compose up` and
+      # exported to the test step, or CI silently loses the golden flow.
+      - name: Generate ephemeral business API key
+        run: echo "PG_API_KEY=PG-$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Build the two Rust images with the GitHub Actions layer cache
+      # (issue #239). The expensive layer is cargo-chef's dependency compile;
+      # it re-caches only when the upstream Cargo.lock changes, dropping a
+      # warm run from ~20-30 min to a few minutes. Separate scopes so the two
+      # images don't evict each other.
+      - name: Build stack images (GHA layer cache)
+        uses: docker/bake-action@v6
+        with:
+          source: .
+          files: postguard-e2e/stack/docker-compose.yml
+          load: true
+          set: |
+            postguard-pkg.cache-from=type=gha,scope=pkg
+            postguard-pkg.cache-to=type=gha,scope=pkg,mode=max
+            cryptify.cache-from=type=gha,scope=cryptify
+            cryptify.cache-to=type=gha,scope=cryptify,mode=max
+
+      - name: Boot the stack
         working-directory: postguard-e2e/stack
-        run: docker compose up -d --build
+        run: docker compose up -d --no-build
 
       - name: Wait for services healthy
         run: |
@@ -181,7 +213,19 @@ jobs:
 
       - name: Run e2e tests
         working-directory: postguard-e2e/yivi-driver
-        run: go test ./... -count=1 -v
+        # The SKIP guard exists because these tests skip (not fail) when their
+        # preconditions are missing — right for local dev, but in CI a skipped
+        # golden flow is silent coverage loss (it happened: the PG_API_KEY
+        # provisioning refactor skipped it unnoticed until #239).
+        run: |
+          set -o pipefail
+          go test ./... -count=1 -v 2>&1 | tee test.out
+          # TestGenerateCryptoFixtures skips by design (generation is manual);
+          # the flows below must actually run.
+          if grep -qE -- '--- SKIP: (TestGoldenFlow|TestPKGInitiatedDisclosureYieldsJWT)' test.out; then
+            echo '::error::a mandatory e2e test was SKIPPED in CI — its preconditions broke (see above)'
+            exit 1
+          fi
 
       - name: Stack logs (on failure)
         if: failure()
