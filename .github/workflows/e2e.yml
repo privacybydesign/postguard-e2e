@@ -178,6 +178,16 @@ jobs:
       - name: Generate ephemeral business API key
         run: echo "PG_API_KEY=PG-$(openssl rand -hex 24)" >> "$GITHUB_ENV"
 
+      # A cold build of both Rust images plus the mode=max layer-cache export
+      # needs more scratch space than a stock runner has free (~14 GB) — a
+      # cold run died with "no space left on device". (Cold happens whenever
+      # the GHA cache isn't visible: first run on a PR branch, cache eviction.)
+      # Dropping the big preinstalled toolchains we never use frees ~25 GB.
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
       - uses: docker/setup-buildx-action@v3
 
       # Exposes ACTIONS_RUNTIME_TOKEN / ACTIONS_CACHE_URL to the shell so the
