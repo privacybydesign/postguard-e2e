@@ -1,0 +1,13 @@
+{
+  "name": "postguard-e2e-fixtures-verify",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Verifies the committed crypto-compat fixtures with the PINNED published @e4a/pg-wasm.",
+  "scripts": {
+    "verify": "node --experimental-wasm-modules verify.mjs"
+  },
+  "dependencies": {
+    "@e4a/pg-wasm": "0.6.1"
+  }
+}

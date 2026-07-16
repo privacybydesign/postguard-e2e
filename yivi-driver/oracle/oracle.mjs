@@ -8,10 +8,12 @@
 // cryptify stores and unseals (UnsealerStreamConfig). The memory-mode seal
 // produces an incompatible container.
 //
-//   seal   in:  {op:"seal", mpk, policy, pubSignKey, privSignKey?, plaintextB64}
-//          out: {ok:true, ciphertextB64}
-//   unseal in:  {op:"unseal", ciphertextB64, vk, recipientId, usk}
-//          out: {ok:true, plaintextB64, recipients:[...], sender}
+//   seal      in:  {op:"seal", mpk, policy, pubSignKey, privSignKey?, plaintextB64}
+//             out: {ok:true, ciphertextB64}
+//   unseal    in:  {op:"unseal", ciphertextB64, vk, recipientId, usk}
+//             out: {ok:true, plaintextB64, recipients:[...], sender}
+//   sealMem   / unsealMem — same shapes, but the MEMORY container format
+//             (pg-js `toBytes()`), which differs on the wire from streaming.
 import * as pg from '@e4a/pg-wasm';
 
 const readStdin = () =>
@@ -62,6 +64,18 @@ try {
     const sender = await unsealer.unseal(job.recipientId, job.usk, out.stream);
     process.stdout.write(
       JSON.stringify({ ok: true, plaintextB64: u8ToB64(out.collected()), recipients, sender })
+    );
+  } else if (job.op === 'sealMem') {
+    const options = { policy: job.policy, pubSignKey: job.pubSignKey };
+    if (job.privSignKey) options.privSignKey = job.privSignKey;
+    const ct = await pg.seal(job.mpk, options, b64ToU8(job.plaintextB64));
+    process.stdout.write(JSON.stringify({ ok: true, ciphertextB64: u8ToB64(ct) }));
+  } else if (job.op === 'unsealMem') {
+    const unsealer = await pg.Unsealer.new(b64ToU8(job.ciphertextB64), job.vk);
+    const recipients = Array.from(unsealer.inspect_header().keys());
+    const [plaintext, sender] = await unsealer.unseal(job.recipientId, job.usk);
+    process.stdout.write(
+      JSON.stringify({ ok: true, plaintextB64: u8ToB64(plaintext), recipients, sender })
     );
   } else {
     throw new Error(`unknown op: ${job.op}`);
