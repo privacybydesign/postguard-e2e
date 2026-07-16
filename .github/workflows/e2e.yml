@@ -188,7 +188,11 @@ jobs:
       - name: Build stack images (GHA layer cache)
         working-directory: postguard-e2e/stack
         run: |
+          # --allow fs.read: the build contexts (../../postguard, ../../cryptify)
+          # sit outside stack/, which buildx's entitlement check requires
+          # explicit permission for in non-interactive runs.
           docker buildx bake -f docker-compose.yml --load \
+            --allow fs.read=../.. \
             --set 'postguard-pkg.cache-from=type=gha,scope=pkg' \
             --set 'postguard-pkg.cache-to=type=gha,scope=pkg,mode=max' \
             --set 'cryptify.cache-from=type=gha,scope=cryptify' \
