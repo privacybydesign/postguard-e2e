@@ -15,7 +15,10 @@ func runOracle(job any) (map[string]json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command("node", "--no-warnings", "oracle/oracle.mjs")
+	// --experimental-wasm-modules: importing the .wasm ESM is unflagged on
+	// recent Node but still gated on some CI Node versions; the flag is accepted
+	// across 22–26, so pass it for portability.
+	cmd := exec.Command("node", "--no-warnings", "--experimental-wasm-modules", "oracle/oracle.mjs")
 	cmd.Stdin = bytes.NewReader(in)
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out

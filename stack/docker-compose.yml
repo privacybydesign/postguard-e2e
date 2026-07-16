@@ -16,19 +16,44 @@ services:
     # Yivi/IRMA server, configured for issuance of the bundled test schemes.
     irma-server:
         image: ghcr.io/privacybydesign/irma:latest
+        # The server WRITES into --schemes-path at startup (it bootstraps the
+        # default pbdf scheme there even with --schemes-update 0), so that path
+        # is a tmpfs (mode 1777 — writable by the image's non-root user) and the
+        # irmago testdata is mounted READ-ONLY as --schemes-assets-path, which
+        # the server copies into the schemes path itself. Mounting the checkout
+        # directly both mutates it (pollutes the irmago working tree) and fails
+        # on CI where the bind mount isn't writable by the container user.
         command: >
             server --no-auth -v
             --url http://localhost:8088
-            --schemes-path /irma/schemes
+            --schemes-path /schemes
+            --schemes-assets-path /irma/schemes-assets
             --privkeys /irma/privkeys
             --schemes-update 0
             --jwt-privkey-file /etc/irma/jwt_privkey.pem
         ports:
             - '8088:8088'
+        tmpfs:
+            - /schemes
         volumes:
-            - ../../irmago/testdata/irma_configuration:/irma/schemes
+            - ../../irmago/testdata/irma_configuration:/irma/schemes-assets:ro
             - ../../irmago/testdata/privatekeys:/irma/privkeys:ro
-            - ../../postguard-website/docker/irma/jwt_privkey.pem:/etc/irma/jwt_privkey.pem:ro
+            # Throwaway JWT signing key, generated locally / in CI (gitignored):
+            #   openssl genrsa -out irma/jwt_privkey.pem 2048
+            - ./irma/jwt_privkey.pem:/etc/irma/jwt_privkey.pem:ro
+        networks: [pg]
+
+    # One-shot gate: the irma image is shell-less (no healthcheck possible), and
+    # the PKG fetches irma-server's /publickey once at boot and CRASHES if it's
+    # not reachable yet. This blocks the PKG until /publickey actually responds.
+    irma-ready:
+        image: curlimages/curl:latest
+        # Bounded so a broken irma-server fails the stack fast (instead of
+        # hanging `up` until the job timeout, hiding the logs).
+        # $$ so compose doesn't interpolate the shell variable itself.
+        command: ['sh', '-c', 'for i in $$(seq 1 90); do curl -sf http://irma-server:8088/publickey >/dev/null 2>&1 && { echo "irma-server ready after $$i tries"; exit 0; }; echo "waiting for irma-server ($$i)…"; sleep 2; done; echo "irma-server never became ready"; exit 1']
+        depends_on:
+            - irma-server
         networks: [pg]
 
     # Private Key Generator (built from the sibling ../../postguard working tree).
@@ -49,13 +74,17 @@ services:
             - IRMA_SERVER=http://irma-server:8088
             # Enables API-key auth (PG-… bearer) validated against business-db.
             - DATABASE_URL=postgresql://postguard:postguard@business-db:5432/postguard
+            # Required since the PKG made its CORS allowlist mandatory. The
+            # harness drives the API from Go (no browser), so wildcard is fine
+            # here; never use `*` on a real deployment.
+            - PKG_ALLOWED_ORIGINS=*
             - RUST_LOG=info
         volumes:
             - ../../postguard:/app
             - pkg-target:/app/target
         depends_on:
-            irma-server:
-                condition: service_started
+            irma-ready:
+                condition: service_completed_successfully
             business-db:
                 condition: service_healthy
         networks: [pg]
