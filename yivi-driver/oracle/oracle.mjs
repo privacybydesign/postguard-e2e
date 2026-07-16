@@ -14,7 +14,18 @@
 //             out: {ok:true, plaintextB64, recipients:[...], sender}
 //   sealMem   / unsealMem — same shapes, but the MEMORY container format
 //             (pg-js `toBytes()`), which differs on the wire from streaming.
+//
+// The *Sdk ops drive the real high-level @e4a/pg-js SDK instead of raw pg-wasm,
+// so the harness tests the exact API surface websites/addons ship. The SDK
+// talks to the PKG itself (params, signing keys, USK), so these ops take a
+// pkgUrl and do real network I/O — the Go test only drives Yivi + cryptify.
+//
+//   sealSdk   in:  {op:"sealSdk", pkgUrl, apiKey, recipientEmail, emailAttribute, plaintextB64}
+//             out: {ok:true, ciphertextB64}     (apiKey signing; data mode)
+//   decryptSdk in: {op:"decryptSdk", pkgUrl, ciphertextB64, jwt, recipientEmail, emailAttribute}
+//             out: {ok:true, plaintextB64, sender}  (session callback returns the pre-obtained JWT)
 import * as pg from '@e4a/pg-wasm';
+import { PostGuard } from '@e4a/pg-js';
 
 const readStdin = () =>
   new Promise((resolve, reject) => {
@@ -77,13 +88,45 @@ try {
     process.stdout.write(
       JSON.stringify({ ok: true, plaintextB64: u8ToB64(plaintext), recipients, sender })
     );
+  } else if (job.op === 'sealSdk') {
+    // Real SDK: encrypt raw data to a recipient addressed by email, signed with
+    // a business API key. The SDK fetches MPK + signing keys from the PKG.
+    const pgc = new PostGuard({
+      pkgUrl: job.pkgUrl,
+      emailAttributes: { email: job.emailAttribute },
+    });
+    const sealed = pgc.encrypt({
+      data: b64ToU8(job.plaintextB64),
+      recipients: [pgc.recipient.email(job.recipientEmail)],
+      sign: pgc.sign.apiKey(job.apiKey),
+    });
+    const ct = await sealed.toBytes();
+    process.stdout.write(JSON.stringify({ ok: true, ciphertextB64: u8ToB64(ct) }));
+  } else if (job.op === 'decryptSdk') {
+    // Real SDK: decrypt via a session callback that returns the JWT the Go
+    // headless driver already obtained (the standard pg-js "host runs the
+    // session" contract). The SDK fetches the USK and unseals.
+    const pgc = new PostGuard({
+      pkgUrl: job.pkgUrl,
+      emailAttributes: { email: job.emailAttribute },
+    });
+    const opened = pgc.open({ data: b64ToU8(job.ciphertextB64) });
+    const res = await opened.decrypt({
+      session: async () => job.jwt,
+      recipient: job.recipientEmail,
+    });
+    process.stdout.write(
+      JSON.stringify({ ok: true, plaintextB64: u8ToB64(res.plaintext), sender: res.sender })
+    );
   } else {
     throw new Error(`unknown op: ${job.op}`);
   }
 } catch (e) {
+  // Surface NetworkError HTTP status/body so PKG/cryptify rejections are
+  // debuggable from the Go side (otherwise it's just a stack trace).
+  let error = String((e && e.stack) || e);
+  if (e && typeof e.status === 'number') error += `\n[http ${e.status}] ${e.body}`;
   // Exit only after stdout is flushed — otherwise exiting a pipe can truncate
   // the JSON and the Go caller sees "oracle produced no JSON" instead of this.
-  process.stdout.write(JSON.stringify({ ok: false, error: String((e && e.stack) || e) }), () =>
-    process.exit(1)
-  );
+  process.stdout.write(JSON.stringify({ ok: false, error }), () => process.exit(1));
 }

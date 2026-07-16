@@ -3,8 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Stateless seal/unseal oracle over @e4a/pg-wasm, driven by the Go golden-flow test.",
+  "description": "Crypto oracle driven by the Go golden-flow test: low-level seal/unseal over @e4a/pg-wasm, and high-level seal/decrypt over the real @e4a/pg-js SDK.",
   "dependencies": {
+    "@e4a/pg-js": "2.3.0",
     "@e4a/pg-wasm": "0.6.1"
   }
 }
