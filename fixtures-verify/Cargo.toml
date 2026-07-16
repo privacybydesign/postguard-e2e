@@ -1,0 +1,15 @@
+[package]
+name = "fixtures-verify"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Verifies the committed crypto-compat fixtures against the CURRENT working-tree pg-core."
+
+[dependencies]
+# The sibling checkout — deliberately the working tree / current main, so a
+# wire-format-breaking change in pg-core turns this red while the fixtures
+# (sealed by the published client) stay fixed.
+pg-core = { path = "../../postguard/pg-core", features = ["rust", "stream"] }
+serde = "1"
+serde_json = "1"
+futures = "0.3"

@@ -24,9 +24,77 @@ on:
     paths:
       - 'yivi-driver/**'
       - 'stack/**'
+      - 'fixtures/**'
+      - 'fixtures-verify/**'
       - '.github/workflows/e2e.yml'
 
 jobs:
+  # Formatting gate: cargo fmt for the Rust verifier, gofmt for the Go driver.
+  # Pure text checks — no builds, no native deps (gofmt doesn't compile, so
+  # yivi-driver's CGO/sqlcipher requirement doesn't apply).
+  fmt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: cargo fmt --check (fixtures-verify)
+        working-directory: fixtures-verify
+        run: cargo fmt --check
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: gofmt (yivi-driver)
+        run: |
+          unformatted=$(gofmt -l yivi-driver)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed on:"; echo "$unformatted"
+            gofmt -d yivi-driver
+            exit 1
+          fi
+
+  # Fast, stack-free wire-format guard (issue #206): the committed golden
+  # ciphertexts must unseal with BOTH the pinned published @e4a/pg-wasm (client
+  # side) and the current postguard main's pg-core (drift detector). Red here
+  # means old ciphertexts in the wild would fail the same way.
+  crypto-fixtures:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout postguard-e2e
+        uses: actions/checkout@v4
+        with:
+          path: postguard-e2e
+
+      # Unpinned on purpose — current pg-core is the thing under test here.
+      - name: Checkout postguard (pg-core)
+        uses: actions/checkout@v4
+        with:
+          repository: encryption4all/postguard
+          path: postguard
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verify with published pg-wasm
+        working-directory: postguard-e2e/fixtures
+        run: npm ci && npm run verify
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # No --locked: pg-core is a path dep whose transitive versions follow
+      # postguard main; pinning them here would only produce false reds.
+      - name: Verify with current pg-core
+        working-directory: postguard-e2e/fixtures-verify
+        run: cargo run
   golden-flow:
     runs-on: ubuntu-latest
     timeout-minutes: 45
