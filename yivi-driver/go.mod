@@ -3,6 +3,7 @@ module yividriver
 go 1.26.0
 
 require (
+	github.com/getkin/kin-openapi v0.142.0
 	github.com/privacybydesign/gabi v0.0.0-20221212095008-68a086907750
 	github.com/privacybydesign/irmago v0.0.0
 	github.com/sirupsen/logrus v1.9.4
@@ -28,6 +29,8 @@ require (
 	github.com/go-co-op/gocron v1.37.0 // indirect
 	github.com/go-co-op/gocron/v2 v2.21.2 // indirect
 	github.com/go-errors/errors v1.5.1 // indirect
+	github.com/go-openapi/jsonpointer v0.22.5 // indirect
+	github.com/go-openapi/swag/jsonname v0.25.5 // indirect
 	github.com/go-redis/redis/v8 v8.11.5 // indirect
 	github.com/go-sql-driver/mysql v1.8.1 // indirect
 	github.com/goccy/go-json v0.10.6 // indirect
@@ -36,6 +39,7 @@ require (
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
 	github.com/golang-sql/sqlexp v0.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
@@ -63,8 +67,11 @@ require (
 	github.com/mr-tron/base58 v1.1.3 // indirect
 	github.com/multiformats/go-multihash v0.0.11 // indirect
 	github.com/nightlyone/lockfile v1.0.0 // indirect
+	github.com/oasdiff/yaml v0.1.1 // indirect
+	github.com/oasdiff/yaml3 v0.0.14 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/sietseringers/go-sse v0.0.0-20200801161811-e2cf2c63ca50 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect

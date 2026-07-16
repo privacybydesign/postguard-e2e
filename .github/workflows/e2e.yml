@@ -26,6 +26,7 @@ on:
       - 'stack/**'
       - 'fixtures/**'
       - 'fixtures-verify/**'
+      - 'contracts/**'
       - '.github/workflows/e2e.yml'
 
 jobs:
@@ -87,6 +88,13 @@ jobs:
       - name: Verify with published pg-wasm
         working-directory: postguard-e2e/fixtures
         run: npm ci && npm run verify
+
+      # L1 contract check, stack-free half (issue #212): the PKG's canonical
+      # condiscon examples must agree with its JSON Schema. The live half runs
+      # in the golden-flow job (TestLiveContract).
+      - name: Validate contract examples against the JSON Schema
+        working-directory: postguard-e2e/contracts
+        run: npm ci && npm run validate
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -231,7 +239,7 @@ jobs:
           go test ./... -count=1 -v 2>&1 | tee test.out
           # TestGenerateCryptoFixtures skips by design (generation is manual);
           # the flows below must actually run.
-          if grep -qE -- '--- SKIP: (TestGoldenFlow|TestPKGInitiatedDisclosureYieldsJWT)' test.out; then
+          if grep -qE -- '--- SKIP: (TestGoldenFlow|TestPKGInitiatedDisclosureYieldsJWT|TestLiveContract)' test.out; then
             echo '::error::a mandatory e2e test was SKIPPED in CI — its preconditions broke (see above)'
             exit 1
           fi
