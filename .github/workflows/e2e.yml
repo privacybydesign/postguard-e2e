@@ -227,10 +227,15 @@ jobs:
         # golden flow is silent coverage loss (it happened: the PG_API_KEY
         # provisioning refactor skipped it unnoticed until #239).
         run: |
+          # pipefail is NOT redundant: without an explicit `shell: bash` key,
+          # GitHub runs `bash -e {0}` (no pipefail), and a go test failure
+          # would be masked by tee's exit status.
           set -o pipefail
           go test ./... -count=1 -v 2>&1 | tee test.out
           # TestGenerateCryptoFixtures skips by design (generation is manual);
-          # the flows below must actually run.
+          # the flows below must actually run. MAINTAINERS: when adding a new
+          # mandatory flow test, extend this allowlist — a test missing here
+          # can silently skip in CI without failing the job.
           if grep -qE -- '--- SKIP: (TestGoldenFlow|TestPKGInitiatedDisclosureYieldsJWT)' test.out; then
             echo '::error::a mandatory e2e test was SKIPPED in CI — its preconditions broke (see above)'
             exit 1
