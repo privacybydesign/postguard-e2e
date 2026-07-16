@@ -1,0 +1,13 @@
+{
+  "name": "postguard-e2e-contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "L1 contract checks: the PKG's canonical condiscon examples must agree with its JSON Schema.",
+  "scripts": {
+    "validate": "node validate-examples.mjs"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1"
+  }
+}
