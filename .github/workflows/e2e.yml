@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -46,7 +46,7 @@ jobs:
         working-directory: fixtures-verify
         run: cargo fmt --check
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.26'
           cache: false
@@ -69,18 +69,18 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout postguard-e2e
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: postguard-e2e
 
       # Unpinned on purpose — current pg-core is the thing under test here.
       - name: Checkout postguard (pg-core)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: encryption4all/postguard
           path: postguard
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
 
@@ -109,7 +109,7 @@ jobs:
       # `../../…` paths in stack/docker-compose.yml and yivi-driver/go.mod
       # resolve (postguard-e2e in its own subdir, deps one level up from it).
       - name: Checkout postguard-e2e
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: postguard-e2e
 
@@ -118,7 +118,7 @@ jobs:
       # change should not break this harness unannounced. Bump deliberately,
       # together with the go.mod replace target.
       - name: Checkout irmago (EUDI fork, pinned)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: privacybydesign/irmago
           ref: de4b4b713f17e92c7181d45dbfdd848784e82b74
@@ -131,13 +131,13 @@ jobs:
       # red nightly here means "PostGuard main changed behavior", not "the
       # harness is broken".
       - name: Checkout postguard (PKG)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: encryption4all/postguard
           path: postguard
 
       - name: Checkout cryptify
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: encryption4all/cryptify
           path: cryptify
@@ -145,12 +145,12 @@ jobs:
       - name: Install libsqlcipher (CGO dep of irmago's client)
         run: sudo apt-get update && sudo apt-get install -y libsqlcipher-dev
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.26'
           cache-dependency-path: postguard-e2e/yivi-driver/go.sum
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
 
