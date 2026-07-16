@@ -39,6 +39,10 @@ jobs:
         with:
           path: postguard-e2e
 
+      # irmago is PINNED: it's an external dependency the yivi-driver builds
+      # against (go.mod replace), not a system under test — an upstream API
+      # change should not break this harness unannounced. Bump deliberately,
+      # together with the go.mod replace target.
       - name: Checkout irmago (EUDI fork, pinned)
         uses: actions/checkout@v4
         with:
@@ -46,6 +50,12 @@ jobs:
           ref: de4b4b713f17e92c7181d45dbfdd848784e82b74
           path: irmago
 
+      # postguard and cryptify are deliberately UNPINNED (default branch):
+      # they are the systems under test — the whole point of the nightly run
+      # is to detect when their `main` drifts against the harness/contracts
+      # (this already caught pg-pkg making --allowed-origins mandatory). A
+      # red nightly here means "PostGuard main changed behavior", not "the
+      # harness is broken".
       - name: Checkout postguard (PKG)
         uses: actions/checkout@v4
         with:
