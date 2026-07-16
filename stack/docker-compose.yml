@@ -58,6 +58,9 @@ services:
 
     # Private Key Generator (built from the sibling ../../postguard working tree).
     postguard-pkg:
+        # Stable tag so CI can pre-build via buildx bake (GHA layer cache) and
+        # `up --no-build` picks it up; a plain local `up` still builds it.
+        image: postguard-e2e-pkg:dev
         build:
             context: ../../postguard
             dockerfile: dev.Dockerfile
@@ -119,6 +122,7 @@ services:
     # Its conf/config.dev.toml already points pkg_url -> postguard-pkg and
     # smtp -> mailcrab, matching the service names here.
     cryptify:
+        image: postguard-e2e-cryptify:dev
         build:
             context: ../../cryptify
             dockerfile: dev.Dockerfile

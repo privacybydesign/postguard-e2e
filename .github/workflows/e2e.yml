@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -46,7 +46,7 @@ jobs:
         working-directory: fixtures-verify
         run: cargo fmt --check
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.26'
           cache: false
@@ -69,18 +69,18 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout postguard-e2e
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: postguard-e2e
 
       # Unpinned on purpose — current pg-core is the thing under test here.
       - name: Checkout postguard (pg-core)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: encryption4all/postguard
           path: postguard
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
 
@@ -89,6 +89,12 @@ jobs:
         run: npm ci && npm run verify
 
       - uses: dtolnay/rust-toolchain@stable
+
+      # Cache the cargo registry + target dir (keyed on the manifests), so
+      # the pg-core build here takes seconds on a warm cache (issue #239).
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: postguard-e2e/fixtures-verify
 
       # No --locked: pg-core is a path dep whose transitive versions follow
       # postguard main; pinning them here would only produce false reds.
@@ -103,7 +109,7 @@ jobs:
       # `../../…` paths in stack/docker-compose.yml and yivi-driver/go.mod
       # resolve (postguard-e2e in its own subdir, deps one level up from it).
       - name: Checkout postguard-e2e
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: postguard-e2e
 
@@ -112,7 +118,7 @@ jobs:
       # change should not break this harness unannounced. Bump deliberately,
       # together with the go.mod replace target.
       - name: Checkout irmago (EUDI fork, pinned)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: privacybydesign/irmago
           ref: de4b4b713f17e92c7181d45dbfdd848784e82b74
@@ -125,13 +131,13 @@ jobs:
       # red nightly here means "PostGuard main changed behavior", not "the
       # harness is broken".
       - name: Checkout postguard (PKG)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: encryption4all/postguard
           path: postguard
 
       - name: Checkout cryptify
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: encryption4all/cryptify
           path: cryptify
@@ -139,12 +145,12 @@ jobs:
       - name: Install libsqlcipher (CGO dep of irmago's client)
         run: sudo apt-get update && sudo apt-get install -y libsqlcipher-dev
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.26'
           cache-dependency-path: postguard-e2e/yivi-driver/go.sum
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
 
@@ -157,9 +163,44 @@ jobs:
           openssl genrsa -out postguard-e2e/stack/irma/jwt_privkey.pem 2048
           chmod 644 postguard-e2e/stack/irma/jwt_privkey.pem
 
-      - name: Boot the stack (builds PKG + cryptify from source — slow)
+      # Provision an ephemeral business API key for this run. business-db
+      # derives its seeded key_hash from this at init, and the golden flow
+      # SKIPS without it — so this must be set before `compose up` and
+      # exported to the test step, or CI silently loses the golden flow.
+      - name: Generate ephemeral business API key
+        run: echo "PG_API_KEY=PG-$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Exposes ACTIONS_RUNTIME_TOKEN / ACTIONS_CACHE_URL to the shell so the
+      # raw `buildx bake` below can use the type=gha cache backend.
+      - uses: crazy-max/ghaction-github-runtime@v3
+
+      # Build the two Rust images with the GitHub Actions layer cache
+      # (issue #239). The expensive layer is cargo-chef's dependency compile;
+      # it re-caches only when the upstream Cargo.lock changes, dropping a
+      # warm run from ~20-30 min to a few minutes. Separate scopes so the two
+      # images don't evict each other.
+      #
+      # Plain `buildx bake` from the stack directory (not the bake-action):
+      # the compose file's relative build contexts (../../postguard) must
+      # resolve against stack/, and running from there guarantees it.
+      - name: Build stack images (GHA layer cache)
         working-directory: postguard-e2e/stack
-        run: docker compose up -d --build
+        run: |
+          # --allow fs.read: the build contexts (../../postguard, ../../cryptify)
+          # sit outside stack/, which buildx's entitlement check requires
+          # explicit permission for in non-interactive runs.
+          docker buildx bake -f docker-compose.yml --load \
+            --allow fs.read=../.. \
+            --set 'postguard-pkg.cache-from=type=gha,scope=pkg' \
+            --set 'postguard-pkg.cache-to=type=gha,scope=pkg,mode=max' \
+            --set 'cryptify.cache-from=type=gha,scope=cryptify' \
+            --set 'cryptify.cache-to=type=gha,scope=cryptify,mode=max'
+
+      - name: Boot the stack
+        working-directory: postguard-e2e/stack
+        run: docker compose up -d --no-build
 
       - name: Wait for services healthy
         run: |
@@ -181,7 +222,19 @@ jobs:
 
       - name: Run e2e tests
         working-directory: postguard-e2e/yivi-driver
-        run: go test ./... -count=1 -v
+        # The SKIP guard exists because these tests skip (not fail) when their
+        # preconditions are missing — right for local dev, but in CI a skipped
+        # golden flow is silent coverage loss (it happened: the PG_API_KEY
+        # provisioning refactor skipped it unnoticed until #239).
+        run: |
+          set -o pipefail
+          go test ./... -count=1 -v 2>&1 | tee test.out
+          # TestGenerateCryptoFixtures skips by design (generation is manual);
+          # the flows below must actually run.
+          if grep -qE -- '--- SKIP: (TestGoldenFlow|TestPKGInitiatedDisclosureYieldsJWT)' test.out; then
+            echo '::error::a mandatory e2e test was SKIPPED in CI — its preconditions broke (see above)'
+            exit 1
+          fi
 
       - name: Stack logs (on failure)
         if: failure()
