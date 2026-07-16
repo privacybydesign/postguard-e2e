@@ -25,7 +25,7 @@ committed secret.
 ## Usage
 
 ```bash
-openssl genrsa -out irma/jwt_privkey.pem 2048   # once: throwaway irma-server JWT key
+openssl genrsa -out irma/jwt_privkey.pem 2048 && chmod 644 irma/jwt_privkey.pem   # once: throwaway irma-server JWT key (644: the container reads it as a non-root user)
 docker compose up -d          # first run builds the Rust services (slow)
 curl -s localhost:8087/health # PKG
 curl -s localhost:8000/health # cryptify

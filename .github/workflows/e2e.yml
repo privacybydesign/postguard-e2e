@@ -71,9 +71,13 @@ jobs:
           node-version: '22'
 
       - name: Generate throwaway irma-server JWT key
+        # chmod 644: openssl creates the key 0600 (owner: runner), but the irma
+        # container reads it through the bind mount as a different non-root
+        # user. It's a throwaway test key, so world-readable is fine.
         run: |
           mkdir -p postguard-e2e/stack/irma
           openssl genrsa -out postguard-e2e/stack/irma/jwt_privkey.pem 2048
+          chmod 644 postguard-e2e/stack/irma/jwt_privkey.pem
 
       - name: Boot the stack (builds PKG + cryptify from source — slow)
         working-directory: postguard-e2e/stack
