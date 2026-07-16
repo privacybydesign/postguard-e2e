@@ -74,6 +74,10 @@ services:
             - IRMA_SERVER=http://irma-server:8088
             # Enables API-key auth (PG-… bearer) validated against business-db.
             - DATABASE_URL=postgresql://postguard:postguard@business-db:5432/postguard
+            # Required since the PKG made its CORS allowlist mandatory. The
+            # harness drives the API from Go (no browser), so wildcard is fine
+            # here; never use `*` on a real deployment.
+            - PKG_ALLOWED_ORIGINS=*
             - RUST_LOG=info
             - RUST_BACKTRACE=1
         volumes:
