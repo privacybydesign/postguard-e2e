@@ -162,6 +162,13 @@ jobs:
         with:
           node-version: '22'
 
+      # Fetch the pinned, published irma-demo scheme (with sidn-pbdf.email +
+      # issuer keys) that the irma-server serves and the holder trusts. Gitignored
+      # + pinned, so this is the single source of the scheme for local and CI.
+      - name: Provision irma-demo scheme
+        working-directory: postguard-e2e/stack/schemes
+        run: ./provision.sh
+
       - name: Generate throwaway irma-server JWT key
         # chmod 644: openssl creates the key 0600 (owner: runner), but the irma
         # container reads it through the bind mount as a different non-root
@@ -249,7 +256,7 @@ jobs:
           go test ./... -count=1 -v 2>&1 | tee test.out
           # TestGenerateCryptoFixtures skips by design (generation is manual);
           # the flows below must actually run.
-          if grep -qE -- '--- SKIP: (TestGoldenFlow|TestPKGInitiatedDisclosureYieldsJWT|TestLiveContract)' test.out; then
+          if grep -qE -- '--- SKIP: (TestGoldenFlow|TestRealSdkGoldenFlow|TestEmailRecipientRoundTrip|TestPKGInitiatedDisclosureYieldsJWT|TestLiveContract)' test.out; then
             echo '::error::a mandatory e2e test was SKIPPED in CI — its preconditions broke (see above)'
             exit 1
           fi

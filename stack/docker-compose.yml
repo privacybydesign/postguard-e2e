@@ -1,16 +1,17 @@
 # Self-contained e2e stack for the PostGuard harness.
 #
-# Unlike postguard-website's dev compose, the irma-server here is wired to
-# irmago's bundled TEST schemes + issuer PRIVATE keys, so a headless holder can
-# issue itself a credential and disclose it — the thing that makes automated
-# end-to-end (incl. decryption) possible. See EPIC issues #203 / #204.
+# The irma-server here is wired to the REAL, published irma-demo scheme (with
+# issuer PRIVATE keys), so a headless holder can issue itself a credential —
+# including an actual sidn-pbdf.email identity — and disclose it, which is what
+# makes automated end-to-end (incl. decryption via the real SDK) possible. See
+# EPIC issues #203 / #204 and #236. Run `stack/schemes/provision.sh` first (it's
+# pinned + gitignored); CI runs it before boot.
 #
 # Build contexts point at the sibling working checkouts so we test CURRENT code
 # (e.g. the in-flight condiscon branch), not published images.
 #
-#   ../../postguard        -> the PKG (this repo's sibling)
-#   ../../irmago           -> Yivi test schemes + issuer private keys
-#   ../../postguard-website/docker/irma/jwt_privkey.pem -> irma-server JWT signing key
+#   ../../postguard          -> the PKG (this repo's sibling)
+#   ./schemes/irma_configuration -> pinned irma-demo scheme (provision.sh)
 
 services:
     # Yivi/IRMA server, configured for issuance of the bundled test schemes.
@@ -19,16 +20,19 @@ services:
         # The server WRITES into --schemes-path at startup (it bootstraps the
         # default pbdf scheme there even with --schemes-update 0), so that path
         # is a tmpfs (mode 1777 — writable by the image's non-root user) and the
-        # irmago testdata is mounted READ-ONLY as --schemes-assets-path, which
-        # the server copies into the schemes path itself. Mounting the checkout
-        # directly both mutates it (pollutes the irmago working tree) and fails
-        # on CI where the bind mount isn't writable by the container user.
+        # scheme is mounted READ-ONLY as --schemes-assets-path, which the server
+        # copies into the schemes path itself. Mounting the checkout directly
+        # both mutates it and fails on CI where the bind mount isn't writable by
+        # the container user.
+        #
+        # No --privkeys: the published irma-demo scheme carries the issuer
+        # private keys inline (<issuer>/PrivateKeys/*.xml), which the server
+        # loads directly, so no separate key directory is needed.
         command: >
             server --no-auth -v
             --url http://localhost:8088
             --schemes-path /schemes
             --schemes-assets-path /irma/schemes-assets
-            --privkeys /irma/privkeys
             --schemes-update 0
             --jwt-privkey-file /etc/irma/jwt_privkey.pem
         ports:
@@ -36,8 +40,10 @@ services:
         tmpfs:
             - /schemes
         volumes:
-            - ../../irmago/testdata/irma_configuration:/irma/schemes-assets:ro
-            - ../../irmago/testdata/privatekeys:/irma/privkeys:ro
+            # Pinned irma-demo scheme provisioned by stack/schemes/provision.sh.
+            # The dir holds irma_configuration/irma-demo/ (incl. sidn-pbdf.email
+            # + inline issuer private keys).
+            - ./schemes/irma_configuration:/irma/schemes-assets:ro
             # Throwaway JWT signing key, generated locally / in CI (gitignored):
             #   openssl genrsa -out irma/jwt_privkey.pem 2048
             - ./irma/jwt_privkey.pem:/etc/irma/jwt_privkey.pem:ro
@@ -81,6 +87,10 @@ services:
             # harness drives the API from Go (no browser), so wildcard is fine
             # here; never use `*` on a real deployment.
             - PKG_ALLOWED_ORIGINS=*
+            # Sign API-key identities with the demo email type, since this stack
+            # can only issue irma-demo credentials (postguard#236). Must match
+            # cryptify's ROCKET_EMAIL_ATTRIBUTE and the SDK's emailAttributes.
+            - PKG_EMAIL_ATTRIBUTE=irma-demo.sidn-pbdf.email.email
             - RUST_LOG=info
         volumes:
             - ../../postguard:/app
@@ -137,6 +147,11 @@ services:
             - '8000:8000'
         environment:
             - ROCKET_CONFIG=/app/config.toml
+            # The sender's email attribute type in the signing identity. Must
+            # match the PKG's PKG_EMAIL_ATTRIBUTE (postguard#236) — this stack
+            # issues irma-demo credentials, so the demo type is what arrives.
+            # ROCKET_-prefixed env is merged by cryptify's figment config.
+            - ROCKET_EMAIL_ATTRIBUTE=irma-demo.sidn-pbdf.email.email
             - RUST_LOG=info
         volumes:
             - ../../cryptify/conf/config.dev.toml:/app/config.toml:ro
