@@ -48,7 +48,7 @@ jobs:
         env:
           # Raises the GitHub API rate limit for the cross-repo reads.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm ci && npm run check
+        run: npm ci && npm test && npm run check
 
   # Formatting gate: cargo fmt for the Rust verifier, gofmt for the Go driver.
   # Pure text checks — no builds, no native deps (gofmt doesn't compile, so
