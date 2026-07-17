@@ -1,0 +1,61 @@
+{
+  "$comment": [
+    "Single source of truth for the known-good version set across PostGuard",
+    "components (EPIC #201, Phase 3 — kill version drift). check-versions.mjs",
+    "reads the LIVE versions each repo declares and fails on drift that is not",
+    "recorded in `knownDrift`. This ratchets: existing drift is tracked + linked",
+    "to an issue, and no NEW drift can be introduced silently.",
+    "Bump `current` here when a producer publishes a new version; the check",
+    "verifies `current` still matches what npm actually serves."
+  ],
+  "sdk": {
+    "pg-js": { "npm": "@e4a/pg-js", "current": "2.3.1" },
+    "pg-wasm": { "npm": "@e4a/pg-wasm", "current": "0.6.1" }
+  },
+  "sdkConsumers": [
+    {
+      "name": "postguard-website",
+      "repo": "encryption4all/postguard-website",
+      "manifest": "package.json",
+      "dep": "@e4a/pg-js"
+    },
+    {
+      "name": "postguard-tb-addon",
+      "repo": "encryption4all/postguard-tb-addon",
+      "manifest": "package.json",
+      "dep": "@e4a/pg-js"
+    },
+    {
+      "name": "postguard-outlook-addon",
+      "repo": "encryption4all/postguard-outlook-addon",
+      "manifest": "package.json",
+      "dep": "@e4a/pg-js",
+      "knownDrift": {
+        "reason": "Pins @e4a/pg-js ^1.10.0 — a full major version behind 2.x; cannot resolve the current SDK. Needs a v1→v2 migration.",
+        "issue": "encryption4all/postguard-outlook-addon#125"
+      }
+    }
+  ],
+  "rust": {
+    "irmaLib": {
+      "canonical": "irmars",
+      "current": "0.2.2",
+      "consumers": [
+        {
+          "name": "postguard (pg-pkg)",
+          "repo": "encryption4all/postguard",
+          "manifest": "pg-pkg/Cargo.toml"
+        },
+        {
+          "name": "cryptify",
+          "repo": "encryption4all/cryptify",
+          "manifest": "Cargo.toml",
+          "knownDrift": {
+            "reason": "Uses the legacy `irma` crate at 0.2.1 instead of `irmars` 0.2.2 (what pg-pkg migrated to in #192). Different crate + older version.",
+            "issue": "encryption4all/cryptify#194"
+          }
+        }
+      ]
+    }
+  }
+}

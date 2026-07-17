@@ -27,9 +27,29 @@ on:
       - 'fixtures/**'
       - 'fixtures-verify/**'
       - 'contracts/**'
+      - 'compat/**'
       - '.github/workflows/e2e.yml'
 
 jobs:
+  # Cross-repo version drift detector (issue #201, Phase 3). Reads the versions
+  # each PostGuard repo declares (npm + GitHub) and fails on drift not tracked
+  # in compat/manifest.json. Runs on the nightly schedule too, because drift is
+  # introduced by OTHER repos' changes — not just PRs here.
+  compat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Check cross-repo version drift
+        working-directory: compat
+        env:
+          # Raises the GitHub API rate limit for the cross-repo reads.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm ci && npm test && npm run check
+
   # Formatting gate: cargo fmt for the Rust verifier, gofmt for the Go driver.
   # Pure text checks — no builds, no native deps (gofmt doesn't compile, so
   # yivi-driver's CGO/sqlcipher requirement doesn't apply).
