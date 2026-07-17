@@ -84,14 +84,6 @@ func TestRealSdkGoldenFlow(t *testing.T) {
 		t.Fatal("sealSdk produced empty ciphertext")
 	}
 
-	// pg-js stamps the policy timestamp with Math.round(Date.now()/1000), which
-	// can round UP to the next whole second — i.e. up to ~1s in the future. The
-	// PKG rejects a USK request whose timestamp is > now ("chronology error").
-	// In real usage the encrypt→decrypt gap is many seconds so it never shows;
-	// this headless flow completes in <1s, so wait for the wall clock to catch
-	// up. (See the pg-js Math.round note reported alongside this change.)
-	time.Sleep(1500 * time.Millisecond)
-
 	// --- UPLOAD to cryptify (fires the notification email) ---
 	uuid, err := cryptifyUpload(cryptifyURL, recipientEmail, ct)
 	if err != nil {
@@ -131,6 +123,15 @@ func TestRealSdkGoldenFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("download: %v", err)
 	}
+
+	// pg-js@2.3.0 stamps the seal policy timestamp with Math.round(Date.now()/
+	// 1000), which can land ~1s in the future; the USK request below (inside
+	// decryptSdk) is what the PKG rejects with "chronology error" when the
+	// timestamp is > now. On a fast localhost the whole flow above can finish
+	// within that second, so guard the USK request directly. Remove once the
+	// oracle picks up the pg-js round→floor fix (postguard-js#116).
+	time.Sleep(1500 * time.Millisecond)
+
 	decRes, err := runOracle(map[string]any{
 		"op":             "decryptSdk",
 		"pkgUrl":         pkgURL,
