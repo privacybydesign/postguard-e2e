@@ -25,15 +25,18 @@ const here = dirname(fileURLToPath(import.meta.url));
  *
  * Deliberately conservative — the manifest is the known-good set, so this only
  * ever ratchets forward to a stable release. An entry is skipped (and reported)
- * rather than bumped when the registry answer is unusable.
+ * rather than bumped when either side of the comparison is unusable: pass the
+ * reason a lookup failed in `errorByKey` and it is reported as such.
  */
-export function planBumps(manifest, latestByKey) {
+export function planBumps(manifest, latestByKey, errorByKey = {}) {
   const bumps = [];
   const skipped = [];
   for (const [key, spec] of Object.entries(manifest.sdk)) {
     const pkg = packageName(spec);
     const latest = latestByKey[key];
-    if (!latest) {
+    if (errorByKey[key]) {
+      skipped.push({ key, pkg, reason: errorByKey[key] });
+    } else if (!latest) {
       skipped.push({ key, pkg, reason: 'registry returned no version' });
     } else if (!semver.valid(latest)) {
       skipped.push({ key, pkg, reason: `latest ${latest} is not a semver version` });
@@ -41,6 +44,11 @@ export function planBumps(manifest, latestByKey) {
       // The manifest tracks what consumers are expected to run, and a
       // prerelease is not that.
       skipped.push({ key, pkg, reason: `latest ${latest} is a prerelease` });
+    } else if (!semver.valid(spec.current)) {
+      // NuGet's native 4-part form (`0.5.0.1`) is the likely way this gets into
+      // the manifest by hand. Comparing against it would throw, and this job
+      // runs unattended, so report it and leave the entry alone.
+      skipped.push({ key, pkg, reason: `current ${spec.current} is not a semver version` });
     } else if (semver.gt(latest, spec.current)) {
       bumps.push({ key, pkg, from: spec.current, to: latest });
     }
@@ -49,6 +57,15 @@ export function planBumps(manifest, latestByKey) {
     // which needs a human, not an automatic downgrade.
   }
   return { bumps, skipped };
+}
+
+/** Status line for a run that produced no bump, honest about which case it was. */
+export function noBumpSummary(skippedCount, entryCount) {
+  if (entryCount > 0 && skippedCount === entryCount) {
+    return 'compat/manifest.json: nothing could be checked, every entry was skipped.';
+  }
+  const caveat = skippedCount ? ' for every entry that could be checked' : '';
+  return `compat/manifest.json already matches the published latest${caveat}.`;
 }
 
 /**
@@ -126,16 +143,24 @@ async function main() {
   const text = readFileSync(file, 'utf8');
   const manifest = JSON.parse(text);
 
+  const entries = Object.entries(manifest.sdk);
   const latestByKey = {};
-  for (const [key, spec] of Object.entries(manifest.sdk)) {
-    latestByKey[key] = await latestFor(spec);
+  const errorByKey = {};
+  for (const [key, spec] of entries) {
+    // One unreachable registry must not stop the other packages from bumping,
+    // so a failed lookup is reported as a skip like any other unusable answer.
+    try {
+      latestByKey[key] = await latestFor(spec);
+    } catch (e) {
+      errorByKey[key] = `registry lookup failed: ${e.message}`;
+    }
   }
 
-  const { bumps, skipped } = planBumps(manifest, latestByKey);
+  const { bumps, skipped } = planBumps(manifest, latestByKey, errorByKey);
   for (const s of skipped) console.error(`  ! ${s.pkg}: ${s.reason}`);
 
   if (!bumps.length) {
-    console.error('compat/manifest.json already matches the published latest.');
+    console.error(noBumpSummary(skipped.length, entries.length));
     return;
   }
 

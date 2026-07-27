@@ -12,3 +12,6 @@ For any postguard-e2e / yivi-driver review, expect tests to be SKIPPED locally: 
 `compat/manifest.json` writes each `sdk[*]` entry on one line. `bump-manifest.mjs` (run unattended by a scheduled job) patches the version string in place so its PRs are a one-line diff. Do not run a formatter over the manifest and do not "tidy" the bumper into `JSON.parse` + `JSON.stringify`: a round-trip turns every one-line entry into four and buries the actual change. `bump-manifest.test.mjs` asserts the one-line property and reads its expected versions out of the manifest, so it survives its own bumps.
 
 `compat/` is the one part of this repo that runs fully in the workspace (`npm ci && npm test && npm run check`), but the check reaches npm, NuGet and the GitHub contents API, so it needs network and a `GH_TOKEN` for the rate limit.
+
+### Workflow `run:` blocks that pipe must set pipefail themselves
+A `run:` block with no `shell:` key runs under `bash -e {0}`, which has no `pipefail`, so a piped command's failure is discarded and the step passes. Only an explicit `shell: bash` gets `-eo pipefail`. The `go test ... | tee test.out` step in `e2e.yml` sets `set -o pipefail` for exactly this reason; keep doing that (or avoid the pipe) in any step whose exit status matters.

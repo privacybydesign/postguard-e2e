@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { planBumps, applyBumps, setSdkCurrent } from './bump-manifest.mjs';
+import { planBumps, applyBumps, setSdkCurrent, noBumpSummary } from './bump-manifest.mjs';
 import { highestStable, registryOf, packageName } from './registries.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -60,6 +60,33 @@ test('planBumps: skips a missing or unparseable registry answer', () => {
   );
   assert.match(skipped[0].reason, /no version/);
   assert.match(skipped[1].reason, /not a semver version/);
+});
+
+test('planBumps: skips an unparseable `current` instead of throwing', () => {
+  // NuGet accepts a 4-part version that semver cannot parse, so it can reach
+  // `current` by hand. `semver.gt` throws on it, and this runs unattended.
+  const manifest = { sdk: { 'pg-dotnet': { nuget: 'E4A.PostGuard', current: '0.5.0.1' } } };
+  const { bumps, skipped } = planBumps(manifest, { 'pg-dotnet': '0.6.0' });
+  assert.deepEqual(bumps, []);
+  assert.equal(skipped.length, 1);
+  assert.match(skipped[0].reason, /current 0\.5\.0\.1 is not a semver version/);
+});
+
+test('planBumps: a failed registry lookup is a skip, and other entries still bump', () => {
+  const { bumps, skipped } = planBumps(
+    fixture,
+    { 'pg-js': '2.3.3' },
+    { 'pg-dotnet': 'registry lookup failed: NuGet E4A.PostGuard: 503' }
+  );
+  assert.deepEqual(bumps, [{ key: 'pg-js', pkg: '@e4a/pg-js', from: '2.3.1', to: '2.3.3' }]);
+  assert.equal(skipped.length, 1);
+  assert.match(skipped[0].reason, /lookup failed.*503/);
+});
+
+test('noBumpSummary: does not claim a match when nothing could be checked', () => {
+  assert.match(noBumpSummary(2, 2), /nothing could be checked/);
+  assert.match(noBumpSummary(0, 2), /already matches the published latest\./);
+  assert.match(noBumpSummary(1, 2), /every entry that could be checked/);
 });
 
 test('setSdkCurrent: edits only the version, leaving the rest of the file byte-identical', () => {
