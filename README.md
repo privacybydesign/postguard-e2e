@@ -78,7 +78,9 @@ Configure via `.env` (see `config.example.env`): target URLs (`PG_PKG_URL`,
 `PG_CRYPTIFY_URL`), credentials (`PG_API_KEY`, `PG_CITIZEN_EMAIL`,
 `PG_ORGANISATION_EMAIL`), and which versions to sweep (`PG_JS_VERSIONS`,
 `PG_DOTNET_VERSIONS`). Each version filter accepts `all`, `latest:N`, a comma
-list (`1.8.0,1.9.0`), or a semver range (`^1.0.0`). Start narrow (`latest:5`).
+list (`1.8.0,1.9.0`), a semver range (`^1.0.0`), or one exact version
+(`2.0.0`, or a prerelease like `2.0.0-rc.1` when named exactly). Start narrow
+(`latest:5`).
 
 Results are written to `report/matrix.md` and `report/matrix.csv`.
 

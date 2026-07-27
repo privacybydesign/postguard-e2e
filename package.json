@@ -9,6 +9,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "test": "node --test 'src/**/*.test.mjs'",
     "enumerate": "node --env-file-if-exists=.env src/enumerate.mjs",
     "run:all": "node --env-file-if-exists=.env src/run.mjs all",
     "run:js": "node --env-file-if-exists=.env src/run.mjs js",
