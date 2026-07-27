@@ -52,7 +52,10 @@ real drift in another repo.
 
 The bump only ratchets forward. A prerelease, a version the registry serves
 that semver can't parse, or a latest older than `current` (an unpublished
-release) is reported and skipped, never applied.
+release) is reported and skipped, never applied. `check-versions.mjs` asks the
+bumper about each of those before it points a reader at `npm run bump`: a
+prerelease on the `latest` dist-tag is a note there rather than a red, and the
+rest say what actually needs doing instead of naming a bump that won't run.
 
 ```bash
 cd compat && npm run bump              # rewrite manifest.json in place

@@ -30,9 +30,13 @@ export async function npmLatest(pkg) {
  * NuGet has no `latest` pointer: the flat-container index lists every version
  * ever pushed, prereleases included and not necessarily sorted the way semver
  * sorts. So pick the maximum stable one ourselves. Versions NuGet accepts but
- * semver does not (the 4-part `1.0.0.1` form) are ignored rather than guessed
- * at — the caller reports the package as unresolvable instead of bumping to
- * something wrong.
+ * semver does not (the 4-part `1.0.0.1` form) are dropped rather than guessed at.
+ *
+ * The caller only hears about that when EVERY version is unparseable, which
+ * returns null. A 4-part release published alongside 3-part ones is invisible:
+ * `highestStable(['0.5.0', '0.6.0.1'])` is `'0.5.0'` and nothing says 0.6.0.1
+ * was dropped, so both the check and the bump call that entry up to date.
+ * `E4A.PostGuard` is 3-part throughout today; revisit if that changes.
  */
 export async function nugetLatest(pkg) {
   const id = encodeURIComponent(pkg.toLowerCase());

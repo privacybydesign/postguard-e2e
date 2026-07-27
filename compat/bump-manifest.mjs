@@ -1,10 +1,10 @@
 // Move compat/manifest.json's `sdk[*].current` up to the published latest.
 //
 // check-versions.mjs fails when `current` no longer matches what npm/NuGet
-// serves. That failure is correct but not actionable by anyone but us: a new
-// SDK release makes the nightly red until someone hand-edits the manifest. So
-// a scheduled job runs this script and opens a PR with the bump, and a red
-// nightly goes back to meaning "a consumer repo drifted".
+// serves. That failure is correct, but nobody outside this repo can act on it:
+// a new SDK release makes the nightly red until someone hand-edits the
+// manifest. So a scheduled job runs this script and opens a PR with the bump,
+// and a red nightly goes back to meaning "a consumer repo drifted".
 //
 //   node compat/bump-manifest.mjs            # rewrite manifest.json in place
 //   node compat/bump-manifest.mjs --dry-run  # report only, touch nothing
@@ -21,40 +21,62 @@ import { latestFor, packageName } from './registries.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
 
 /**
- * Decide which `sdk` entries to move, given the latest version per sdk key.
+ * What this script would do with one entry, given the registry's answer.
  *
- * Deliberately conservative — the manifest is the known-good set, so this only
- * ever ratchets forward to a stable release. An entry is skipped (and reported)
- * rather than bumped when either side of the comparison is unusable: pass the
- * reason a lookup failed in `errorByKey` and it is reported as such.
+ * Deliberately conservative — the manifest is the known-good set, so an entry is
+ * only ever ratcheted forward to a stable release, and is skipped (with a
+ * reason) rather than bumped when either side of the comparison is unusable.
+ * Pass the reason a lookup failed in `error` and it is reported as such.
+ *
+ * check-versions.mjs asks the same question before it tells a reader to run
+ * `npm run bump`, so the two scripts cannot disagree about which mismatches an
+ * automatic bump can clear. Returns `{ action: 'bump' }`,
+ * `{ action: 'skip', code, reason }`, or `{ action: 'none' }`.
  */
+export function classifyEntry(latest, current, error) {
+  if (error) return { action: 'skip', code: 'lookup-failed', reason: error };
+  if (!latest) {
+    return { action: 'skip', code: 'no-version', reason: 'registry returned no version' };
+  }
+  if (!semver.valid(latest)) {
+    return {
+      action: 'skip',
+      code: 'latest-not-semver',
+      reason: `latest ${latest} is not a semver version`,
+    };
+  }
+  if (semver.prerelease(latest)) {
+    // The manifest tracks what consumers are expected to run, and a prerelease
+    // is not that.
+    return { action: 'skip', code: 'latest-prerelease', reason: `latest ${latest} is a prerelease` };
+  }
+  if (!semver.valid(current)) {
+    // NuGet's native 4-part form (`0.5.0.1`) is the likely way this gets into
+    // the manifest by hand. Comparing against it would throw, and this job runs
+    // unattended, so report it and leave the entry alone.
+    return {
+      action: 'skip',
+      code: 'current-not-semver',
+      reason: `current ${current} is not a semver version`,
+    };
+  }
+  if (semver.gt(latest, current)) return { action: 'bump' };
+  // latest <= current: nothing to do. An unpublished or yanked release makes
+  // current the higher of the two; check-versions.mjs reports that as drift,
+  // which needs a human, not an automatic downgrade.
+  return { action: 'none' };
+}
+
+/** Decide which `sdk` entries to move, given the latest version per sdk key. */
 export function planBumps(manifest, latestByKey, errorByKey = {}) {
   const bumps = [];
   const skipped = [];
   for (const [key, spec] of Object.entries(manifest.sdk)) {
     const pkg = packageName(spec);
     const latest = latestByKey[key];
-    if (errorByKey[key]) {
-      skipped.push({ key, pkg, reason: errorByKey[key] });
-    } else if (!latest) {
-      skipped.push({ key, pkg, reason: 'registry returned no version' });
-    } else if (!semver.valid(latest)) {
-      skipped.push({ key, pkg, reason: `latest ${latest} is not a semver version` });
-    } else if (semver.prerelease(latest)) {
-      // The manifest tracks what consumers are expected to run, and a
-      // prerelease is not that.
-      skipped.push({ key, pkg, reason: `latest ${latest} is a prerelease` });
-    } else if (!semver.valid(spec.current)) {
-      // NuGet's native 4-part form (`0.5.0.1`) is the likely way this gets into
-      // the manifest by hand. Comparing against it would throw, and this job
-      // runs unattended, so report it and leave the entry alone.
-      skipped.push({ key, pkg, reason: `current ${spec.current} is not a semver version` });
-    } else if (semver.gt(latest, spec.current)) {
-      bumps.push({ key, pkg, from: spec.current, to: latest });
-    }
-    // latest <= current: nothing to do. An unpublished or yanked release makes
-    // current the higher of the two; check-versions.mjs reports that as drift,
-    // which needs a human, not an automatic downgrade.
+    const verdict = classifyEntry(latest, spec.current, errorByKey[key]);
+    if (verdict.action === 'skip') skipped.push({ key, pkg, reason: verdict.reason });
+    else if (verdict.action === 'bump') bumps.push({ key, pkg, from: spec.current, to: latest });
   }
   return { bumps, skipped };
 }

@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import semver from 'semver';
 import { latestFor, packageName } from './registries.mjs';
+import { classifyEntry } from './bump-manifest.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '';
@@ -89,6 +90,44 @@ export function parseIrmaDep(toml) {
   return null;
 }
 
+/**
+ * How one `sdk` producer entry is reported: `{ level: 'note' | 'problem', message }`.
+ *
+ * Only points at `npm run bump` when the bumper would in fact move the entry.
+ * It ratchets forward to a stable release only, so a prerelease on the `latest`
+ * dist-tag is a note here: telling the reader to bump would leave the nightly
+ * red on an instruction that provably does nothing (bump-manifest.mjs skips the
+ * entry and exits 0). The other mismatches the bumper refuses stay red, but say
+ * so instead of promising a fix.
+ */
+export function sdkVerdict({ name, pkg, current, latest }) {
+  if (latest === current) {
+    return { level: 'note', message: `${pkg} = ${latest} (matches manifest)` };
+  }
+  const verdict = classifyEntry(latest, current);
+  if (verdict.action === 'bump') {
+    return {
+      level: 'problem',
+      message:
+        `${pkg}: manifest says current=${current} but registry latest=${latest}. ` +
+        `Run \`npm run bump\` to move manifest.sdk.${name}.current (and re-check consumers).`,
+    };
+  }
+  if (verdict.code === 'latest-prerelease') {
+    return {
+      level: 'note',
+      message: `${pkg} = ${current} (registry latest=${latest} is a prerelease, which the manifest does not track)`,
+    };
+  }
+  const why = verdict.reason ?? `latest ${latest} is older than current ${current}`;
+  return {
+    level: 'problem',
+    message:
+      `${pkg}: manifest says current=${current} but registry latest=${latest}. ` +
+      `\`npm run bump\` leaves this entry alone (${why}), so it needs a hand.`,
+  };
+}
+
 async function main() {
   const manifest = JSON.parse(readFileSync(join(here, 'manifest.json'), 'utf8'));
   const problems = [];
@@ -100,14 +139,8 @@ async function main() {
     const pkg = packageName(spec);
     const latest = await latestFor(spec);
     sdkCurrent[pkg] = spec.current;
-    if (latest !== spec.current) {
-      problems.push(
-        `${pkg}: manifest says current=${spec.current} but registry latest=${latest}. ` +
-          `Run \`npm run bump\` to move manifest.sdk.${name}.current (and re-check consumers).`
-      );
-    } else {
-      notes.push(`${pkg} = ${latest} (matches manifest)`);
-    }
+    const { level, message } = sdkVerdict({ name, pkg, current: spec.current, latest });
+    (level === 'problem' ? problems : notes).push(message);
   }
 
   // --- 2. SDK consumers: each declared range must resolve the current SDK ---
