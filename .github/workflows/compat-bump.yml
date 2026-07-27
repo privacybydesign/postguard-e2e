@@ -1,0 +1,101 @@
+# Auto-bump the compat manifest when a producer publishes (issue #22).
+#
+# check-versions.mjs fails when compat/manifest.json's `current` no longer
+# matches what npm/NuGet serves. That failure is real, but only this repo can
+# act on it, and until someone does the nightly is red for a reason no reader
+# can do anything about. This job makes the edit and opens the PR, so a red
+# nightly goes back to meaning "a consumer repo drifted".
+name: compat-bump
+
+on:
+  schedule:
+    - cron: '0 5 * * *' # 05:00 UTC, after the 03:00 nightly e2e
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: compat-bump
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      # `npm test` first: the bumper rewrites a tracked file unattended, so a
+      # broken helper must fail the job rather than commit whatever it produced.
+      - name: Move manifest.current to the published latest
+        working-directory: compat
+        run: |
+          set -euo pipefail
+          npm ci
+          npm test
+          # Bump lines go to stdout (the PR body), skip lines to stderr (the log
+          # and a note at the bottom of that body). Redirect rather than pipe:
+          # this shell has no pipefail unless asked, and `tee` would hide the
+          # bumper's exit status, cancelling the `npm test` guard above.
+          rc=0
+          node bump-manifest.mjs \
+            > "$RUNNER_TEMP/bumps.txt" 2> "$RUNNER_TEMP/notes.txt" || rc=$?
+          cat "$RUNNER_TEMP/notes.txt" >&2
+          cat "$RUNNER_TEMP/bumps.txt"
+          exit "$rc"
+
+      - name: Open or update the bump PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- compat/manifest.json; then
+            # Print what the bumper concluded rather than asserting a match. On a
+            # registry outage every entry is skipped, the bumper exits 0, and the
+            # manifest is unchanged for a reason that is not "already up to date".
+            cat "$RUNNER_TEMP/notes.txt"
+            exit 0
+          fi
+
+          branch=chore/compat-manifest-bump
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c "$branch"
+          git commit -m 'chore(compat): bump manifest current versions to published latest' \
+            -- compat/manifest.json
+          # Force: the branch survives from the previous run, and this job owns it.
+          git push --force origin "$branch"
+
+          # Entries the bumper refused to touch (prerelease, unparseable
+          # version, registry down). Without this the reason lives only in the
+          # Actions log, and a package silently stops being tracked.
+          skips=$(grep '^  ! ' "$RUNNER_TEMP/notes.txt" || true)
+
+          body=$(
+            echo 'A producer published a version newer than `compat/manifest.json` records:'
+            echo
+            sed 's/^/- /' "$RUNNER_TEMP/bumps.txt"
+            echo
+            echo 'Consumer ranges and the `knownDrift` ratchet are unchanged, so whatever'
+            echo 'stays red after this is real drift. Opened by the `compat-bump` job.'
+            if [ -n "$skips" ]; then
+              echo
+              echo 'Entries this run did not check:'
+              echo
+              printf '%s\n' "$skips" | sed 's/^  ! /- /'
+            fi
+          )
+
+          if [ -n "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
+            gh pr edit "$branch" --body "$body"
+          else
+            gh pr create --base main --head "$branch" \
+              --title 'chore(compat): bump manifest to the published latest' \
+              --body "$body" \
+              --reviewer rubenhensen
+          fi
