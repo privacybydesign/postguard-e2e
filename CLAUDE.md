@@ -11,7 +11,10 @@ For any postguard-e2e / yivi-driver review, expect tests to be SKIPPED locally: 
 ### compat/: the manifest is edited as text, not reserialised
 `compat/manifest.json` writes each `sdk[*]` entry on one line. `bump-manifest.mjs` (run unattended by a scheduled job) patches the version string in place so its PRs are a one-line diff. Do not run a formatter over the manifest and do not "tidy" the bumper into `JSON.parse` + `JSON.stringify`: a round-trip turns every one-line entry into four and buries the actual change. `bump-manifest.test.mjs` asserts the one-line property and reads its expected versions out of the manifest, so it survives its own bumps.
 
-`compat/` is the one part of this repo that runs fully in the workspace (`npm ci && npm test && npm run check`), but the check reaches npm, NuGet and the GitHub contents API, so it needs network and a `GH_TOKEN` for the rate limit.
+`compat/` is the one part of this repo that runs fully in the workspace (`npm ci && npm test && npm run check`), but the check reaches npm, NuGet and the GitHub contents API, so it needs network and a `GH_TOKEN` for the rate limit. To rehearse a registry answer you cannot publish (a prerelease on `latest`, a 404), run either script under `node --import stub.mjs`, where the stub wraps `globalThis.fetch`.
+
+### compat/: which mismatches the bumper will act on lives in one place
+`classifyEntry` in `bump-manifest.mjs` decides, per `sdk` entry, whether a mismatch is a bump, a skip, or nothing. `check-versions.mjs` calls it before it tells a reader to run `npm run bump`. Keep it that way: when the two disagreed, a prerelease on npm's `latest` dist-tag made the nightly red with an instruction the bumper refused, so the red could never clear. Any new rule about what the bump may touch goes in `classifyEntry`, not in either caller.
 
 ### Workflow `run:` blocks that pipe must set pipefail themselves
 A `run:` block with no `shell:` key runs under `bash -e {0}`, which has no `pipefail`, so a piped command's failure is discarded and the step passes. Only an explicit `shell: bash` gets `-eo pipefail`. The `go test ... | tee test.out` step in `e2e.yml` sets `set -o pipefail` for exactly this reason; keep doing that (or avoid the pipe) in any step whose exit status matters.
