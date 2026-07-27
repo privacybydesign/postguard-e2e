@@ -37,7 +37,6 @@ You cannot introduce new drift silently, and you cannot leave stale exceptions.
 | Repo | Component | Drift | Issue |
 |---|---|---|---|
 | postguard-outlook-addon | `@e4a/pg-js` | pins `^1.10.0`, a major behind `2.x` | encryption4all/postguard-outlook-addon#125 |
-| cryptify | Rust IRMA lib | uses legacy `irma 0.2.1`, not `irmars 0.2.2` | encryption4all/cryptify#194 |
 
 ## The auto-bump
 
