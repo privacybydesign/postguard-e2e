@@ -46,15 +46,6 @@
           "name": "postguard (pg-pkg)",
           "repo": "encryption4all/postguard",
           "manifest": "pg-pkg/Cargo.toml"
-        },
-        {
-          "name": "cryptify",
-          "repo": "encryption4all/cryptify",
-          "manifest": "Cargo.toml",
-          "knownDrift": {
-            "reason": "Uses the legacy `irma` crate at 0.2.1 instead of `irmars` 0.2.2 (what pg-pkg migrated to in #192). Different crate + older version.",
-            "issue": "encryption4all/cryptify#194"
-          }
         }
       ]
     }
