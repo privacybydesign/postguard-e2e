@@ -5,12 +5,13 @@
     "reads the LIVE versions each repo declares and fails on drift that is not",
     "recorded in `knownDrift`. This ratchets: existing drift is tracked + linked",
     "to an issue, and no NEW drift can be introduced silently.",
-    "Bump `current` here when a producer publishes a new version; the check",
-    "verifies `current` still matches what npm actually serves."
+    "`current` follows the published latest; the check verifies that, and",
+    "bump-manifest.mjs opens the PR that moves it when a producer publishes."
   ],
   "sdk": {
-    "pg-js": { "npm": "@e4a/pg-js", "current": "2.3.1" },
-    "pg-wasm": { "npm": "@e4a/pg-wasm", "current": "0.6.1" }
+    "pg-js": { "npm": "@e4a/pg-js", "current": "2.3.3" },
+    "pg-wasm": { "npm": "@e4a/pg-wasm", "current": "0.6.1" },
+    "pg-dotnet": { "nuget": "E4A.PostGuard", "current": "0.5.0" }
   },
   "sdkConsumers": [
     {
