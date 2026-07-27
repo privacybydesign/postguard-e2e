@@ -14,16 +14,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import semver from 'semver';
+import { latestFor, packageName } from './registries.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '';
-
-async function npmLatest(pkg) {
-  const res = await fetch(`https://registry.npmjs.org/${pkg.replace('/', '%2F')}`);
-  if (!res.ok) throw new Error(`npm registry ${pkg}: ${res.status}`);
-  const json = await res.json();
-  return json['dist-tags']?.latest;
-}
 
 async function ghFile(repo, path) {
   const res = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
@@ -100,18 +94,19 @@ async function main() {
   const problems = [];
   const notes = [];
 
-  // --- 1. SDK producers: manifest.current must match what npm actually serves ---
+  // --- 1. SDK producers: manifest.current must match what the registry serves ---
   const sdkCurrent = {};
   for (const [name, spec] of Object.entries(manifest.sdk)) {
-    const latest = await npmLatest(spec.npm);
-    sdkCurrent[spec.npm] = spec.current;
+    const pkg = packageName(spec);
+    const latest = await latestFor(spec);
+    sdkCurrent[pkg] = spec.current;
     if (latest !== spec.current) {
       problems.push(
-        `${spec.npm}: manifest says current=${spec.current} but npm latest=${latest}. ` +
-          `Bump manifest.sdk.${name}.current (and re-check consumers).`
+        `${pkg}: manifest says current=${spec.current} but registry latest=${latest}. ` +
+          `Run \`npm run bump\` to move manifest.sdk.${name}.current (and re-check consumers).`
       );
     } else {
-      notes.push(`${spec.npm} = ${latest} (matches manifest)`);
+      notes.push(`${pkg} = ${latest} (matches manifest)`);
     }
   }
 
