@@ -15,8 +15,17 @@ in production.
 - **SDK producers** — `manifest.sdk[*].current` must equal what the registry
   serves (npm for the `@e4a/pg-*` line, NuGet for `E4A.PostGuard`), so the
   manifest can't go stale.
-- **SDK consumers** — each repo's declared `@e4a/pg-js` range must resolve the
-  current published version (`semver.satisfies`).
+- **SDK consumers** — an external repo's declared `@e4a/pg-js` range must
+  resolve the current published version (`semver.satisfies`).
+- **Monorepo members** — an entry marked `"expect": "workspace"` lives in
+  `encryption4all/postguard-js`. Its dep is a `workspace:` link, which cannot
+  drift, so the range question is meaningless; the check asserts the link is
+  *still* there. A member that regresses to a fixed pin
+  (`"@e4a/pg-js": "2.3.4"`) reintroduces exactly the drift the consolidation
+  removed, and that is what gets reported.
+- **The paths themselves** — a `repo`/`manifest` GitHub read that 404s is a hard
+  failure, not a skip. An entry whose file no longer exists is monitoring
+  nothing, so a move has to be followed here rather than reporting green forever.
 - **Rust IRMA library** — consumers must use the canonical crate (`irmars`) at
   the current version, not the legacy `irma` crate.
 
@@ -81,3 +90,7 @@ cd compat && npm ci && npm test && npm run check
 - A consumer was upgraded → the check turns red demanding the matching
   `knownDrift` entry be removed. Remove it.
 - A new shared component or consumer appears → add it here.
+- A consumer moved into the postguard-js monorepo → point `repo`/`manifest` at
+  its path in the monorepo and add `"expect": "workspace"`. The next one is
+  `postguard-outlook-addon` (encryption4all/postguard-js#127), at which point its
+  `knownDrift` entry goes away with the same edit.
