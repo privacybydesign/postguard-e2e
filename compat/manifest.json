@@ -9,9 +9,9 @@
     "bump-manifest.mjs opens the PR that moves it when a producer publishes."
   ],
   "sdk": {
-    "pg-js": { "npm": "@e4a/pg-js", "current": "2.3.3" },
+    "pg-js": { "npm": "@e4a/pg-js", "current": "2.3.4" },
     "pg-wasm": { "npm": "@e4a/pg-wasm", "current": "0.6.1" },
-    "pg-dotnet": { "nuget": "E4A.PostGuard", "current": "0.5.0" }
+    "pg-dotnet": { "nuget": "E4A.PostGuard", "current": "0.6.0" }
   },
   "sdkConsumers": [
     {
