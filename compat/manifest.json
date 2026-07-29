@@ -6,7 +6,10 @@
     "recorded in `knownDrift`. This ratchets: existing drift is tracked + linked",
     "to an issue, and no NEW drift can be introduced silently.",
     "`current` follows the published latest; the check verifies that, and",
-    "bump-manifest.mjs opens the PR that moves it when a producer publishes."
+    "bump-manifest.mjs opens the PR that moves it when a producer publishes.",
+    "An sdkConsumers entry with `expect: \"workspace\"` is a member of the",
+    "postguard-js monorepo: its dep cannot drift, so the check asserts it is",
+    "still a `workspace:` link rather than which version the range resolves."
   ],
   "sdk": {
     "pg-js": { "npm": "@e4a/pg-js", "current": "2.3.4" },
@@ -16,15 +19,17 @@
   "sdkConsumers": [
     {
       "name": "postguard-website",
-      "repo": "encryption4all/postguard-website",
-      "manifest": "package.json",
-      "dep": "@e4a/pg-js"
+      "repo": "encryption4all/postguard-js",
+      "manifest": "apps/website/package.json",
+      "dep": "@e4a/pg-js",
+      "expect": "workspace"
     },
     {
       "name": "postguard-tb-addon",
-      "repo": "encryption4all/postguard-tb-addon",
-      "manifest": "package.json",
-      "dep": "@e4a/pg-js"
+      "repo": "encryption4all/postguard-js",
+      "manifest": "apps/tb-addon/package.json",
+      "dep": "@e4a/pg-js",
+      "expect": "workspace"
     },
     {
       "name": "postguard-outlook-addon",

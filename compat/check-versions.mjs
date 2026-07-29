@@ -27,8 +27,31 @@ async function ghFile(repo, path) {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
-  if (!res.ok) throw new Error(`GitHub ${repo}/${path}: ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(`GitHub ${repo}/${path}: ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
   return res.text();
+}
+
+/**
+ * How an unreadable manifest is reported. Always a problem — an entry whose
+ * file cannot be read is monitoring nothing, and a `knownDrift` block does not
+ * excuse it.
+ *
+ * A 404 gets its own wording because it is not a transient hiccup: the repo or
+ * the path is gone (a move, a rename, a consolidation), and the fix is an edit
+ * to manifest.json rather than a retry.
+ */
+export function readFailureMessage(consumer, error) {
+  if (error?.status === 404) {
+    return (
+      `${consumer.name}: ${consumer.repo}/${consumer.manifest} does not exist (GitHub 404), ` +
+      `so this entry monitors nothing. Point repo/manifest at the file the code lives in now.`
+    );
+  }
+  return `${consumer.name}: could not read ${consumer.manifest} (${error.message})`;
 }
 
 // A Cargo version requirement is a RANGE, and a bare version defaults to caret
@@ -128,6 +151,69 @@ export function sdkVerdict({ name, pkg, current, latest }) {
   };
 }
 
+/**
+ * How one `sdkConsumers` entry is reported: `{ level: 'note' | 'problem', message }`.
+ *
+ * `expect` picks which question is asked, because there are two kinds of consumer:
+ *
+ * - no `expect` — an external repo. Its declared range must resolve the current
+ *   published SDK.
+ * - `expect: "workspace"` — a member of the postguard-js monorepo. The dep is a
+ *   `workspace:` link, which by construction cannot drift, so asking which
+ *   version it resolves is meaningless. What is worth asserting is that it is
+ *   *still* a workspace link: a member that regresses to a fixed pin
+ *   reintroduces exactly the drift the consolidation removed.
+ *
+ * Both go through the same ratchet as before — drift covered by `knownDrift` is
+ * a note, new drift is a problem, and drift that has since been fixed is a
+ * problem so the allowlist cannot rot.
+ */
+export function consumerVerdict({ consumer: c, spec, current }) {
+  if (!spec) return { level: 'problem', message: `${c.name}: does not declare ${c.dep}` };
+
+  let ok, resolved, driftShort, drift;
+  if (c.expect === 'workspace') {
+    ok = spec.startsWith('workspace:');
+    resolved = `${c.dep} ${spec} is a workspace link`;
+    driftShort = `${c.dep} is "${spec}", NOT a workspace link`;
+    drift =
+      `${c.dep} is "${spec}", no longer a workspace link. A monorepo member on a ` +
+      `fixed pin reintroduces the drift the consolidation removed — restore ` +
+      `"${c.dep}": "workspace:*", or record it as knownDrift with a tracking issue.`;
+  } else if (c.expect === undefined) {
+    ok = semver.satisfies(current, spec, { includePrerelease: true });
+    resolved = `${c.dep} ${spec} resolves ${current}`;
+    driftShort = `${c.dep} ${spec} CANNOT resolve ${current}`;
+    drift =
+      `${c.dep} ${spec} cannot resolve current ${current}. ` +
+      `Bump the pin, or record it as knownDrift with a tracking issue.`;
+  } else {
+    return {
+      level: 'problem',
+      message:
+        `${c.name}: unknown "expect" value ${JSON.stringify(c.expect)} in manifest.json ` +
+        `(use "workspace", or leave the field out for an external consumer).`,
+    };
+  }
+
+  if (ok && c.knownDrift) {
+    return {
+      level: 'problem',
+      message:
+        `${c.name}: ${resolved} — drift is FIXED. ` +
+        `Remove the knownDrift entry from manifest.json.`,
+    };
+  }
+  if (ok) return { level: 'note', message: `${c.name}: ${resolved} ✓` };
+  if (c.knownDrift) {
+    return {
+      level: 'note',
+      message: `${c.name}: ${driftShort} — known drift (${c.knownDrift.issue}): ${c.knownDrift.reason}`,
+    };
+  }
+  return { level: 'problem', message: `${c.name}: ${drift}` };
+}
+
 async function main() {
   const manifest = JSON.parse(readFileSync(join(here, 'manifest.json'), 'utf8'));
   const problems = [];
@@ -143,43 +229,26 @@ async function main() {
     (level === 'problem' ? problems : notes).push(message);
   }
 
-  // --- 2. SDK consumers: each declared range must resolve the current SDK ---
+  // --- 2. SDK consumers: an external range must resolve the current SDK; a
+  //        monorepo member must still be a workspace link ---
   for (const c of manifest.sdkConsumers) {
-    let range;
+    let spec;
     try {
       const pkg = JSON.parse(await ghFile(c.repo, c.manifest));
-      range =
+      spec =
         pkg.dependencies?.[c.dep] ??
         pkg.devDependencies?.[c.dep] ??
         pkg.peerDependencies?.[c.dep];
     } catch (e) {
-      problems.push(`${c.name}: could not read ${c.manifest} (${e.message})`);
+      problems.push(readFailureMessage(c, e));
       continue;
     }
-    if (!range) {
-      problems.push(`${c.name}: does not declare ${c.dep}`);
-      continue;
-    }
-    const current = sdkCurrent[c.dep];
-    const ok = semver.satisfies(current, range, { includePrerelease: true });
-    if (ok && c.knownDrift) {
-      problems.push(
-        `${c.name}: ${c.dep} ${range} now resolves ${current} — drift is FIXED. ` +
-          `Remove the knownDrift entry from manifest.json.`
-      );
-    } else if (ok) {
-      notes.push(`${c.name}: ${c.dep} ${range} resolves ${current} ✓`);
-    } else if (c.knownDrift) {
-      notes.push(
-        `${c.name}: ${c.dep} ${range} CANNOT resolve ${current} — known drift ` +
-          `(${c.knownDrift.issue}): ${c.knownDrift.reason}`
-      );
-    } else {
-      problems.push(
-        `${c.name}: ${c.dep} ${range} cannot resolve current ${current}. ` +
-          `Bump the pin, or record it as knownDrift with a tracking issue.`
-      );
-    }
+    const { level, message } = consumerVerdict({
+      consumer: c,
+      spec,
+      current: sdkCurrent[c.dep],
+    });
+    (level === 'problem' ? problems : notes).push(message);
   }
 
   // --- 3. Rust IRMA library: consumers must use the canonical crate + version ---
@@ -190,7 +259,7 @@ async function main() {
       try {
         toml = await ghFile(c.repo, c.manifest);
       } catch (e) {
-        problems.push(`${c.name}: could not read ${c.manifest} (${e.message})`);
+        problems.push(readFailureMessage(c, e));
         continue;
       }
       const dep = parseIrmaDep(toml);
