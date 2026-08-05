@@ -13,7 +13,7 @@
   ],
   "sdk": {
     "pg-js": { "npm": "@e4a/pg-js", "current": "2.3.4" },
-    "pg-wasm": { "npm": "@e4a/pg-wasm", "current": "0.6.1" },
+    "pg-wasm": { "npm": "@e4a/pg-wasm", "current": "0.6.2" },
     "pg-dotnet": { "nuget": "E4A.PostGuard", "current": "0.6.0" }
   },
   "sdkConsumers": [
