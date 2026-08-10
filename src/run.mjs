@@ -12,6 +12,7 @@
 
 import { appendFileSync } from 'node:fs';
 
+import { parseArgs } from './args.mjs';
 import { loadConfig } from './config.mjs';
 import { enumerateJs, enumerateDotnet } from './enumerate.mjs';
 import { filterVersions } from './filter.mjs';
@@ -30,27 +31,15 @@ import { sealWithNewStack } from './seal.mjs';
 import { commandExists } from './spawn.mjs';
 import { notSweptClients } from './verdict.mjs';
 
-function parseArgs(argv) {
-  const positional = [];
-  const flags = {};
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--profile' || argv[i] === '--legs') {
-      flags[argv[i].slice(2)] = argv[++i];
-    } else {
-      positional.push(argv[i]);
-    }
-  }
-  return { which: positional[0], ...flags };
-}
-
-const args = parseArgs(process.argv.slice(2));
 let which;
 let legs;
 let config;
 try {
   // A typo in any of the three sweeps something other than what was asked for,
-  // so all three refuse rather than fall back. Same reporting as gate.mjs: the
-  // message is the useful part, a stack trace through resolveClient is not.
+  // so all three refuse rather than fall back — as does a flag with no value at
+  // all. Same reporting as gate.mjs: the message is the useful part, a stack
+  // trace through resolveClient is not.
+  const args = parseArgs(process.argv.slice(2));
   which = resolveClient(args.which);
   legs = resolveLegs(args.legs);
   config = loadConfig({ profile: args.profile ?? null });

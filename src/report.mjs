@@ -91,7 +91,13 @@ ${
   run.decrypt
     ? `- Decrypt legs: artifact sealed by \`@e4a/pg-wasm@${run.decrypt.sealerVersion}\` into the ` +
       `\`${run.decrypt.universe}\` key universe (recipient \`${run.decrypt.recipientId}\`)`
-    : '- Decrypt legs: not run'
+    : // Sealing is scoped to the sweeps that open the artifact, so a dotnet-only
+      // sweep has no artifact while its rows still carry a decrypt outcome — the
+      // reflection probe's. "Not run" beside a green decrypt gate is the one
+      // contradiction this report must not print.
+      run.legs?.includes('decrypt')
+      ? '- Decrypt legs: ran with no sealed artifact (no client in scope opens one — the .NET leg is a reflection probe)'
+      : '- Decrypt legs: not run'
 }
 ${(run.notSwept ?? [])
   .map(

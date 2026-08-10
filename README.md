@@ -96,9 +96,12 @@ Each version × leg yields one of:
 - Node.js ≥ 22 (for the harness and the pg-js sandboxes).
 - .NET SDK (for the E4A.PostGuard sandboxes). To *run* the flow you also need the
   matching runtime — the sandbox targets `net8.0`. If `dotnet` isn't installed the
-  .NET sweep is skipped: harmless on a developer machine, but under a profile the
-  sweep exits nonzero and both gates go red, because a client that produced no
-  rows is a support window the run says nothing about.
+  .NET sweep is skipped, and with .NET in scope both gates then go red on it
+  whether or not a profile is named: `notSwept` travels in the report
+  unconditionally, because a client that produced no rows is a support window the
+  run says nothing about. Under a profile the sweep step itself also exits
+  nonzero, and a profile always puts both clients in scope — `--profile nightly
+  js` reports the .NET window as unswept rather than as out of scope.
 - A PostGuard-for-Business API key (`PG-…`) and a test recipient email, to run the
   actual flow. Without them the harness still enumerates and installs each version.
 
