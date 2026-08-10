@@ -139,8 +139,13 @@ jobs:
       # The other half: the ledger says the bytes match what was recorded, this
       # says the recording itself was only ever appended to. Pull requests only
       # — it is the one check that needs a merge base.
+      #
+      # `!cancelled()` so it still reports when the ledger step above already
+      # failed. The two gates answer different questions and a tampered corpus
+      # trips both; short-circuiting would mean the second one's verdict is
+      # never seen precisely on the runs it exists for.
       - name: Enforce that the corpus is append-only
-        if: github.event_name == 'pull_request'
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         working-directory: postguard-e2e/fixtures
         env:
           # The base commit itself, not the branch name: actions/checkout builds
