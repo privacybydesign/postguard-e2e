@@ -94,11 +94,14 @@ key_hash=$(printf %s "$PG_API_KEY" | sha256sum | cut -d ' ' -f 1)
 # (src/lib/server/services/api-keys.ts), so the seeded row looks like a real one.
 key_prefix=$(printf %s "$PG_API_KEY" | cut -c 1-10)
 
-run_psql <<SQL
+# psql's :'var' quotes the value as a SQL literal; key_prefix is the first 10
+# characters of a caller-supplied PG_API_KEY, so a quote in it would otherwise
+# close the string and break the INSERT.
+run_psql -v key_hash="$key_hash" -v key_prefix="$key_prefix" <<'SQL'
 INSERT INTO business_api_keys (key_hash, key_prefix, name, org_id, signing_attrs, expires_at)
 VALUES (
-    '${key_hash}',
-    '${key_prefix}',
+    :'key_hash',
+    :'key_prefix',
     'golden-flow',
     '00000000-0000-0000-0000-0000000000a1',
     '{"email": true}'::jsonb,
