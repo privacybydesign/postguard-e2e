@@ -22,6 +22,10 @@ each file with plain `psql -f` (no `--single-transaction`): postguard-business's
 own migration-safety checker pushes new migrations towards
 `CREATE INDEX CONCURRENTLY`, which cannot run inside a transaction block.
 
+`business-db` runs `postgres:16-alpine` while postguard-business runs `postgres:18`,
+so a migration using an 18-only feature would fail here and nowhere else. If that
+ever happens the fix is to match its major version, not to patch around it.
+
 Provisioning is a one-shot container, not a `/docker-entrypoint-initdb.d` script:
 initdb scripts only fire on an empty data dir and the postgres image keeps an
 anonymous volume, so the old init-script seed silently stopped re-applying after
