@@ -54,7 +54,7 @@ Defaults point at the sibling checkouts / provisioned scheme; override via env:
 |---|---|---|
 | `IRMA_SCHEME_ROOT` | `../stack/schemes/irma_configuration` | scheme dir (holds `irma-demo/`) the stack tests trust — the pinned real scheme from `stack/schemes/provision.sh`. |
 | `IRMA_EMAIL_ATTRIBUTE` | `irma-demo.sidn-pbdf.email.email` | sender email attribute type the stack signs with; must match the PKG/cryptify knobs (postguard#236). |
-| `IRMAGO_ROOT` | `/Users/rubenhensen/Repos/irmago` | only used by the `go run .` self-test's in-process server (irmago's bundled testdata). |
+| `IRMAGO_ROOT` | `../../irmago` | irmago checkout whose `testdata/` seeds the in-process servers (schemes, issuer private keys, keyshare keys). Used by the `go run .` self-test and the keyshare flow; the stack-based tests don't read it. |
 | `YIVI_DRIVER_AES_KEY` | _(random per run)_ | hex-encoded 32-byte key for the holder's local storage encryption. Set it (64 hex chars) only when the on-disk state must survive restarts; otherwise a fresh random key is generated each run. |
 
 ## Tests
@@ -79,6 +79,27 @@ Defaults point at the sibling checkouts / provisioned scheme; override via env:
 
   Both skip automatically if the stack isn't running.
 
+- **Keyshare flow (no stack):** `keyshare_flow_test.go` — the keyshare-backed
+  variant. The flows above use `irma-demo.*`, where the holder owns its whole
+  secret key and computes proofs alone; production Yivi splits that key with a
+  keyshare server, so every proof costs a PIN-authenticated round trip to it.
+  This one enrolls the headless holder with a keyshare server, is issued
+  `test.test.email` and discloses it, asserting the proof was co-computed with
+  the keyshare server and that a PIN was answered along the way.
+
+  It runs against an in-process irma-server and keyshare server, so it needs no
+  docker stack and no PKG — only an irmago checkout (`IRMAGO_ROOT`) for the
+  schemes and keys. It takes ~7s, most of it waiting for the enrollment's PIN
+  authentication to age out so the disclosure has to buy a fresh one.
+
+  ```bash
+  go test -run TestKeyshareDisclosureFlow -v
+  ```
+
+  The keyshare server has to listen on the address the `test` scheme names
+  (`http://localhost:8080`) because that is where the holder looks for it, so the
+  test fails to start rather than misbehaving if that port is taken.
+
 ## Status
 
 - ✅ **#204:** headless holder — self-test (in-process VALID proof) +
@@ -87,6 +108,13 @@ Defaults point at the sibling checkouts / provisioned scheme; override via env:
   (+ a minimal business-db) with the irma-server wired for test-scheme issuance.
 - ✅ **#205:** full golden flow — `TestGoldenFlow` seals, uploads, emails,
   discloses (headless), decrypts, and verifies — no phone, no browser.
+- ✅ **postguard#238:** the keyshare (PIN) leg —
+  `TestKeyshareDisclosureFlow` enrolls with a keyshare server and discloses a
+  keyshare-backed `test.*` credential. Narrow on purpose: it covers the client ↔
+  irma-server proof computation, not PostGuard's own endpoints, which the
+  `irma-demo` flows above still own. Carrying keyshare through the stack needs
+  the containerised irma-server to serve the `test` scheme and the PKG to accept
+  `test.*` identities, which is a bigger change than the ticket asked for.
 
 ## Prerequisites
 

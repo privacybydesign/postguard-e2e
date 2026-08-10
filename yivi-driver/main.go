@@ -14,15 +14,10 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/privacybydesign/irmago/irma"
-	"github.com/privacybydesign/irmago/irma/server"
-	"github.com/privacybydesign/irmago/irma/server/irmaserver"
-	"github.com/sirupsen/logrus"
 )
 
 const irmaPort = 48690
@@ -44,9 +39,9 @@ func main() {
 
 func run() error {
 	// Defaults to the standard sibling checkout (matches go.mod's replace); override with IRMAGO_ROOT.
-	irmagoRoot := env("IRMAGO_ROOT", "../../irmago")
-	schemesSrc := filepath.Join(irmagoRoot, "testdata", "irma_configuration")
-	privkeys := filepath.Join(irmagoRoot, "testdata", "privatekeys")
+	testdata := irmagoTestdata()
+	schemesSrc := filepath.Join(testdata, "irma_configuration")
+	privkeys := filepath.Join(testdata, "privatekeys")
 
 	work, err := os.MkdirTemp("", "yivi-driver-")
 	if err != nil {
@@ -54,36 +49,12 @@ func run() error {
 	}
 	defer os.RemoveAll(work)
 
-	// The server writes into its schemes dir, so give it a private copy.
-	schemesDir := filepath.Join(work, "irma_configuration")
-	if err := copyDir(schemesSrc, schemesDir); err != nil {
-		return fmt.Errorf("copy schemes: %w", err)
-	}
-
-	logger := logrus.New()
-	logger.SetLevel(logrus.FatalLevel)
-	irma.SetLogger(logger)
-
-	conf := &server.Configuration{
-		URL:                   fmt.Sprintf("http://localhost:%d", irmaPort),
-		SchemesPath:           schemesDir,
-		IssuerPrivateKeysPath: privkeys,
-		DisableSchemesUpdate:  true,
-		Logger:                logger,
-	}
-	srv, err := irmaserver.New(conf)
+	srv, err := startLocalIrmaServer(fmt.Sprintf("localhost:%d", irmaPort), schemesSrc, privkeys, work, quietLogger())
 	if err != nil {
-		return fmt.Errorf("irmaserver.New: %w", err)
+		return err
 	}
 	defer srv.Stop()
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", srv.HandlerFunc())
-	httpSrv := &http.Server{Addr: fmt.Sprintf("localhost:%d", irmaPort), Handler: mux}
-	go func() { _ = httpSrv.ListenAndServe() }()
-	defer httpSrv.Close()
-	time.Sleep(300 * time.Millisecond)
-	fmt.Printf("irma-server up on :%d (schemes: test + irma-demo)\n", irmaPort)
+	fmt.Printf("irma-server up on %s (schemes: test + irma-demo)\n", srv.URL)
 
 	// Build the headless holder.
 	storagePath := filepath.Join(work, "client")
@@ -149,26 +120,4 @@ func run() error {
 		return fmt.Errorf("expected proof status VALID, got %v", res.ProofStatus)
 	}
 	return nil
-}
-
-// copyDir recursively copies src to dst.
-func copyDir(src, dst string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		target := filepath.Join(dst, rel)
-		if info.IsDir() {
-			return os.MkdirAll(target, 0o755)
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(target, data, info.Mode().Perm())
-	})
 }
