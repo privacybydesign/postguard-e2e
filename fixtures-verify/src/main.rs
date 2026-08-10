@@ -97,7 +97,8 @@ fn schema_v1() -> u32 {
 impl Meta {
     fn parse(dir: &Path) -> Result<Meta, String> {
         let raw = fs::read(dir.join("meta.json")).map_err(|e| format!("read meta.json: {e}"))?;
-        let meta: Meta = serde_json::from_slice(&raw).map_err(|e| format!("parse meta.json: {e}"))?;
+        let meta: Meta =
+            serde_json::from_slice(&raw).map_err(|e| format!("parse meta.json: {e}"))?;
         if !SUPPORTED_SCHEMA_VERSIONS.contains(&meta.schema_version) {
             return Err(format!(
                 "meta.json schemaVersion {} is newer than this verifier understands (knows {:?}) \
@@ -205,7 +206,11 @@ fn check_signatures(
     meta: &Meta,
     container: &Container,
 ) -> Result<(), String> {
-    if !has_attribute(&verified.public, "pbdf.sidn-pbdf.email.email", &meta.sender_email) {
+    if !has_attribute(
+        &verified.public,
+        "pbdf.sidn-pbdf.email.email",
+        &meta.sender_email,
+    ) {
         return Err(format!(
             "verified public sender policy does not carry email={}: {:?}",
             meta.sender_email, verified.public.con
@@ -274,12 +279,14 @@ fn run_case(exe: &Path, dir: &Path, file: &str) -> Result<(), String> {
         // A reader that aborts rather than returning an error is the expected
         // shape of a header-layout break, so say so here: without this line the
         // only evidence is an exit code and a reader that printed nothing.
-        Some(sig) => format!(
+        Some(sig) => {
+            format!(
             "reader died on signal {sig} before it could report — a published-writer container \
              whose header the current pg-core no longer agrees with aborts on a garbage length \
              prefix rather than returning an error{}",
             if stderr.is_empty() { String::new() } else { format!(": {stderr}") }
-        ),
+        )
+        }
         None if stderr.is_empty() => format!("exited with {}", out.status),
         None => stderr,
     })
@@ -292,7 +299,10 @@ fn drive(fixtures: &Path) -> Result<(usize, usize), String> {
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.is_dir())
-        .filter(|p| !p.file_name().is_some_and(|n| NOT_A_SET.iter().any(|s| n == *s)))
+        .filter(|p| {
+            !p.file_name()
+                .is_some_and(|n| NOT_A_SET.iter().any(|s| n == *s))
+        })
         .collect();
     dirs.sort();
 
@@ -301,7 +311,11 @@ fn drive(fixtures: &Path) -> Result<(usize, usize), String> {
     let mut failures = Vec::new();
 
     for dir in &dirs {
-        let name = dir.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        let name = dir
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
         let meta = match Meta::parse(dir) {
             Ok(meta) => meta,
             Err(e) => {
@@ -373,7 +387,12 @@ fn main() -> ExitCode {
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures");
 
     // Child mode: exactly one container, so an abort takes only this process.
-    if let ["--case", dir, file] = args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+    if let ["--case", dir, file] = args
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
         return match open_case(Path::new(dir), file) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
@@ -389,7 +408,10 @@ fn main() -> ExitCode {
 
     match drive(&fixtures) {
         Ok((0, _)) | Ok((_, 0)) => {
-            eprintln!("no fixture sets found in {} — that itself is a failure", fixtures.display());
+            eprintln!(
+                "no fixture sets found in {} — that itself is a failure",
+                fixtures.display()
+            );
             ExitCode::FAILURE
         }
         Ok((sets, containers)) => {

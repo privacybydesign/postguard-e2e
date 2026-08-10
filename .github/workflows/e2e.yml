@@ -67,6 +67,10 @@ jobs:
         working-directory: fixtures-verify
         run: cargo fmt --check
 
+      - name: cargo fmt --check (fixtures/gen)
+        working-directory: fixtures/gen
+        run: cargo fmt --check
+
       - uses: actions/setup-go@v7
         with:
           go-version: '1.26'
@@ -81,10 +85,14 @@ jobs:
             exit 1
           fi
 
-  # Fast, stack-free wire-format guard (issue #206): the committed golden
-  # ciphertexts must unseal with BOTH the pinned published @e4a/pg-wasm (client
-  # side) and the current postguard main's pg-core (drift detector). Red here
-  # means old ciphertexts in the wild would fail the same way.
+  # Fast, stack-free archival guard (issues #206, #19/#23): every container in
+  # the committed corpus must still open with the pinned published
+  # @e4a/pg-wasm, with the @e4a/pg-js the ecosystem currently ships, and with
+  # the current postguard main's pg-core. Red here means old ciphertexts in the
+  # wild would fail the same way.
+  #
+  # The corpus is append-only, and this job is where that is enforced: the
+  # digest ledger on every event, and the merge-base diff on pull requests.
   crypto-fixtures:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -93,6 +101,11 @@ jobs:
         uses: actions/checkout@v7
         with:
           path: postguard-e2e
+          # Full history: the append-only gate compares HEAD against the merge
+          # base with the PR's target branch, and a shallow clone has no common
+          # ancestor to compare against. The gate fails rather than passing
+          # when it cannot find one, so a regression here goes red, not quiet.
+          fetch-depth: 0
 
       # Unpinned on purpose — current pg-core is the thing under test here.
       - name: Checkout postguard (pg-core)
@@ -105,9 +118,40 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Verify with published pg-wasm
+      - name: Install corpus verifier deps
         working-directory: postguard-e2e/fixtures
-        run: npm ci && npm run verify
+        run: npm ci
+
+      # The gates' own tests: they build a throwaway repository, delete and
+      # edit a fixture in it, and assert the gate refuses. A gate only ever
+      # observed reporting success has not been observed.
+      - name: Test the append-only gate
+        working-directory: postguard-e2e/fixtures
+        run: npm test
+
+      # Runs on every event, including the nightly schedule and a push that
+      # never opened a pull request: the recorded digests are what make "these
+      # bytes are frozen" a property of the repository rather than of review.
+      - name: Check the corpus against its digest ledger
+        working-directory: postguard-e2e/fixtures
+        run: npm run ledger
+
+      # The other half: the ledger says the bytes match what was recorded, this
+      # says the recording itself was only ever appended to. Pull requests only
+      # — it is the one check that needs a merge base.
+      - name: Enforce that the corpus is append-only
+        if: github.event_name == 'pull_request'
+        working-directory: postguard-e2e/fixtures
+        env:
+          # The base commit itself, not the branch name: actions/checkout builds
+          # the PR's merge commit, so this is exactly its first parent and no
+          # extra fetch is needed.
+          PG_APPEND_ONLY_BASE: ${{ github.event.pull_request.base.sha }}
+        run: npm run append-only
+
+      - name: Verify the corpus with the published JS readers
+        working-directory: postguard-e2e/fixtures
+        run: npm run verify
 
       # L1 contract check, stack-free half (issue #212): the PKG's canonical
       # condiscon examples must agree with its JSON Schema. The live half runs
@@ -126,9 +170,10 @@ jobs:
 
       # No --locked: pg-core is a path dep whose transitive versions follow
       # postguard main; pinning them here would only produce false reds.
-      - name: Verify with current pg-core
+      - name: Verify the corpus with current pg-core
         working-directory: postguard-e2e/fixtures-verify
         run: cargo run
+
   golden-flow:
     runs-on: ubuntu-latest
     timeout-minutes: 45

@@ -3,11 +3,16 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Verifies the committed crypto-compat fixtures with the PINNED published @e4a/pg-wasm.",
+  "description": "Verifies the committed golden container corpus with the published JS readers, and enforces that the corpus is append-only.",
   "scripts": {
-    "verify": "node --experimental-wasm-modules verify.mjs"
+    "verify": "node verify.mjs",
+    "ledger": "node ledger.mjs",
+    "ledger:write": "node ledger.mjs --write",
+    "append-only": "node append-only.mjs",
+    "test": "node --test \"*.test.mjs\""
   },
   "dependencies": {
+    "@e4a/pg-js": "2.3.4",
     "@e4a/pg-wasm": "0.6.1"
   }
 }

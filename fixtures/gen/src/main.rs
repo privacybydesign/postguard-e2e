@@ -70,10 +70,26 @@ struct Container {
 }
 
 const CONTAINERS: &[Container] = &[
-    Container { file: "mem.bin", mode: "memory", private_signing: false },
-    Container { file: "stream.bin", mode: "stream", private_signing: false },
-    Container { file: "mem-privsig.bin", mode: "memory", private_signing: true },
-    Container { file: "stream-privsig.bin", mode: "stream", private_signing: true },
+    Container {
+        file: "mem.bin",
+        mode: "memory",
+        private_signing: false,
+    },
+    Container {
+        file: "stream.bin",
+        mode: "stream",
+        private_signing: false,
+    },
+    Container {
+        file: "mem-privsig.bin",
+        mode: "memory",
+        private_signing: true,
+    },
+    Container {
+        file: "stream-privsig.bin",
+        mode: "stream",
+        private_signing: true,
+    },
 ];
 
 /// Distinct plaintext per container, so a verifier that opens the wrong file,
@@ -83,7 +99,11 @@ fn plaintext(version: &str, container: &Container) -> Vec<u8> {
         "postguard-e2e container corpus: pg-core {version} {} container{}; \
          old ciphertexts must decrypt forever",
         container.mode,
-        if container.private_signing { ", private signature" } else { "" }
+        if container.private_signing {
+            ", private signature"
+        } else {
+            ""
+        }
     )
     .into_bytes()
 }
@@ -298,7 +318,11 @@ fn base64_encode(bytes: &[u8]) -> String {
     const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
     for chunk in bytes.chunks(3) {
-        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
         let n = (b[0] as u32) << 16 | (b[1] as u32) << 8 | b[2] as u32;
         for i in 0..4 {
             if i <= chunk.len() {
@@ -313,7 +337,11 @@ fn base64_encode(bytes: &[u8]) -> String {
 
 fn usage() -> ExitCode {
     eprintln!("usage: cargo run --locked -- <writer-version> <out-dir>");
-    eprintln!("       writer-version: {} | {}", v0_6_1::VERSION, v0_5_10::VERSION);
+    eprintln!(
+        "       writer-version: {} | {}",
+        v0_6_1::VERSION,
+        v0_5_10::VERSION
+    );
     ExitCode::FAILURE
 }
 
