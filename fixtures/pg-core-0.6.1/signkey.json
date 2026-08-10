@@ -1,0 +1,26 @@
+{
+  "privSignKey": {
+    "key": "+o8AhwZsi9QJADF/3SiwbRzrXVvNwKc/IHoOS0zSawSeNkdrfbw/b3dAJbZ0OJ9HAxX+DpdyXNptev3TZGjUUTD3BK0YHVMEcrjgWPIi65Bg4EnQCpy31/zD61gJl3YY",
+    "policy": {
+      "con": [
+        {
+          "t": "pbdf.gemeente.personalData.fullname",
+          "v": "Golden Sender"
+        }
+      ],
+      "ts": 1704067200
+    }
+  },
+  "pubSignKey": {
+    "key": "sr1pVQc7Nq1pxSJZIacbHH3v/VIxobI4C+A++fCG8QsazVKv2XjcVpuzyCq13p5NiWhMcnwW1YPvoRf7DtNpfOGRxMsrqvHGM8RjhxIZ2XxFwFIkS8LFOZcrUm9s/p2U",
+    "policy": {
+      "con": [
+        {
+          "t": "pbdf.sidn-pbdf.email.email",
+          "v": "sender@golden.test"
+        }
+      ],
+      "ts": 1704067200
+    }
+  }
+}

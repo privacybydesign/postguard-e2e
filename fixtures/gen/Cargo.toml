@@ -1,0 +1,32 @@
+[package]
+name = "fixtures-gen"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Seals golden container fixtures with PINNED PUBLISHED pg-core releases from crates.io."
+
+# One renamed dependency per published writer in the corpus, exactly like
+# pg-compat does for readers. Two `=` pins of the same crate only coexist
+# because 0.5.10 and 0.6.1 are semver-INCOMPATIBLE; two 0.6.x pins would not
+# resolve at all (cargo keeps one copy per compatible range), so a same-minor
+# writer needs its own crate directory rather than another line here.
+#
+# Both are the crates.io rows of the machine-read `Reader list` block in
+# postguard's COMPATIBILITY.md. `default-features = false` keeps this a writer
+# of the two container modes and nothing else.
+[dependencies]
+pg-core-0-6-1 = { package = "pg-core", version = "=0.6.1", default-features = false, features = [
+  "rust",
+  "stream",
+] }
+pg-core-0-5-10 = { package = "pg-core", version = "=0.5.10", default-features = false, features = [
+  "rust",
+  "stream",
+] }
+
+# Reproducible-by-contract RNG: `StdRng` is explicitly not stable across rand
+# releases, `ChaCha20Rng` is. Same choice as pg-core's own sample sealer.
+rand = "0.8"
+rand_chacha = "0.3"
+serde_json = "1"
+futures = "0.3"

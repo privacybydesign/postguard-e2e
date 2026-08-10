@@ -18,3 +18,6 @@ stack/irma/*.pem
 # rust verifier build artifacts (lockfile too: pg-core is a path dep, pinning transitive versions would false-red)
 fixtures-verify/target/
 fixtures-verify/Cargo.lock
+
+# fixture generator build artifacts (published pg-core writers; the lockfile IS committed)
+fixtures/gen/target/
