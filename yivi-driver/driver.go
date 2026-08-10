@@ -145,9 +145,10 @@ func (d *YiviDriver) RunSession(qr *irma.Qr) error {
 	d.c.NewSession(id, string(j))
 
 	// Per-session error channel so a late grant failure can't leak into a
-	// subsequent RunSession (buffered so a grant that lands after we've already
-	// returned via timeout doesn't block its goroutine).
-	grantErr := make(chan error, 1)
+	// subsequent RunSession. One slot per interaction goroutine we may start
+	// (permission, PIN), so one that fails after we've already returned via
+	// timeout still doesn't block on the send.
+	grantErr := make(chan error, 2)
 
 	// The client re-emits Status_RequestPin after a rejected PIN. We only ever
 	// send the enrolled one, so a second prompt means something is wrong —
