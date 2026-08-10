@@ -5,9 +5,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { legVerdict } from './verdict.mjs';
+import { legVerdict, notSweptClients } from './verdict.mjs';
 
-const report = (js = [], dotnet = []) => ({ results: { js, dotnet } });
+const report = (js = [], dotnet = [], notSwept = []) => ({ results: { js, dotnet }, notSwept });
 const row = (client, version, legs, extra = {}) => ({
   client,
   version,
@@ -89,6 +89,36 @@ test('an empty report is red for every leg', () => {
     assert.equal(legVerdict(report(), leg).ok, false);
   }
   assert.equal(legVerdict({}, 'wire').ok, false);
+});
+
+test('one client cannot certify a leg for the client that produced no rows', () => {
+  // The coverage loss a runner without the .NET SDK causes: the pg-js rows
+  // populate the leg, so `relevant` is non-empty and the "gate matched no row"
+  // guard never fires, and half the declared support matrix passes unswept.
+  const passing = [row('js', '2.3.4', { wire: { outcome: 'pass' }, decrypt: { outcome: 'pass' } })];
+  assert.equal(legVerdict(report(passing), 'decrypt').ok, true);
+
+  for (const leg of ['wire', 'decrypt']) {
+    const verdict = legVerdict(
+      report(passing, [], [{ client: 'dotnet', why: 'no dotnet SDK on the machine' }]),
+      leg
+    );
+    assert.equal(verdict.ok, false, `${leg} must be red`);
+    assert.match(verdict.failures[0], /dotnet was not swept at all \(no dotnet SDK/);
+  }
+});
+
+test('a client is only expected when the sweep had it in scope', () => {
+  const results = { js: [row('js', '2.3.4', { wire: { outcome: 'pass' } })], dotnet: [] };
+  // `sweep -- js` never promised a .NET row, so nothing is missing.
+  assert.deepEqual(notSweptClients(['js'], results), []);
+  assert.deepEqual(notSweptClients(['js', 'dotnet'], results, { dotnet: 'no dotnet SDK' }), [
+    { client: 'dotnet', why: 'no dotnet SDK' },
+  ]);
+  // No reason recorded still beats no report: the gate says what, not why.
+  assert.deepEqual(notSweptClients(['dotnet'], results), [
+    { client: 'dotnet', why: 'no version of it was swept' },
+  ]);
 });
 
 test('an unknown outcome is red rather than assumed benign', () => {

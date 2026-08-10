@@ -1,7 +1,8 @@
 // Decrypt leg for the "modern" @e4a/pg-js API (>=1.0.0): open an artifact the
 // NEW stack sealed, with the OLD published SDK under test. Copied into each
-// sandbox as open.mjs and run there, so the bare `@e4a/pg-js` import resolves to
-// the version being swept. Prints a single `__RESULT__ <json>` line.
+// sandbox as decrypt.mjs — run-js.mjs names a leg's script after the leg — and
+// run there, so the bare `@e4a/pg-js` import resolves to the version being
+// swept. Prints a single `__RESULT__ <json>` line.
 //
 // This is the consumer-breaking direction: a deployment updates, its senders
 // start producing new bytes, and every recipient still on last year's add-on has

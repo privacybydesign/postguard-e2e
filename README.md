@@ -42,7 +42,8 @@ pre-deploy gate and a maintainer sweeping by hand have to sweep the same set:
 
 The same file holds the two profiles: `nightly` sweeps the **edge** deployment,
 `pre-deploy` sweeps the **candidate** server images (the `stack/` compose, built
-from the postguard checkout under test). Both hold both legs mandatory.
+from the postguard checkout under test). Both hold both legs mandatory, and the
+sweep refuses a `--legs` list that runs fewer than the named profile declares.
 
 ### The legs
 
@@ -95,7 +96,9 @@ Each version × leg yields one of:
 - Node.js ≥ 22 (for the harness and the pg-js sandboxes).
 - .NET SDK (for the E4A.PostGuard sandboxes). To *run* the flow you also need the
   matching runtime — the sandbox targets `net8.0`. If `dotnet` isn't installed the
-  .NET sweep is skipped automatically.
+  .NET sweep is skipped: harmless on a developer machine, but under a profile the
+  sweep exits nonzero and both gates go red, because a client that produced no
+  rows is a support window the run says nothing about.
 - A PostGuard-for-Business API key (`PG-…`) and a test recipient email, to run the
   actual flow. Without them the harness still enumerates and installs each version.
 

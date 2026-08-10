@@ -93,6 +93,13 @@ ${
       `\`${run.decrypt.universe}\` key universe (recipient \`${run.decrypt.recipientId}\`)`
     : '- Decrypt legs: not run'
 }
+${(run.notSwept ?? [])
+  .map(
+    ({ client, why }) =>
+      `- **Not swept: ${client}** — ${why}. Every gate below is red on it: a client with no ` +
+      'rows is a support window this run says nothing about.'
+  )
+  .join('\n')}
 
 > **wire** — the non-interactive server-facing path against the target above:
 > params → encrypt with API-key signing → upload → download/inspect. This is
@@ -161,6 +168,10 @@ ${mdTable(results.dotnet)}
     target: run.target ?? null,
     legs: run.legs ?? [],
     decrypt: run.decrypt ?? null,
+    // Clients that were in scope and produced no row. gate.mjs cannot infer
+    // this from `results` — an empty list there is indistinguishable from a
+    // client nobody asked for — so the sweep states it.
+    notSwept: run.notSwept ?? [],
     config: {
       pkgUrl: config.pkgUrl,
       cryptifyUrl: config.cryptifyUrl,

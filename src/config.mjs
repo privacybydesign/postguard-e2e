@@ -32,6 +32,9 @@ export function loadConfig({ profile = null, env = process.env } = {}) {
   return {
     profile: p?.name ?? null,
     target: p?.target ?? null,
+    // The legs this profile holds mandatory, so the sweep can refuse to run
+    // fewer than the profile declares (see missingRequiredLegs).
+    requires: p?.requires ?? [],
     pkgUrl: pkgUrl.value,
     pkgUrlSource: pkgUrl.source,
     cryptifyUrl: cryptifyUrl.value,

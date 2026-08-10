@@ -31,6 +31,25 @@ const WHY = {
 };
 
 /**
+ * The clients that were in scope but produced no row at all.
+ *
+ * A gate judges the rows in the report, so a client that contributed none is
+ * invisible to it: with `{js: [passing], dotnet: []}` there is nothing to
+ * filter out and nothing to complain about, and the pg-js rows certify the leg
+ * on behalf of the client that was never swept. A runner without the .NET SDK
+ * is the way that happens by accident.
+ *
+ * @param {string[]} scope   clients the sweep was asked to cover
+ * @param {object}   results { js: row[], dotnet: row[] }
+ * @param {object}   why     per-client reason, when the sweep knows one
+ */
+export function notSweptClients(scope, results, why = {}) {
+  return scope
+    .filter((client) => (results?.[client] ?? []).length === 0)
+    .map((client) => ({ client, why: why[client] ?? 'no version of it was swept' }));
+}
+
+/**
  * The verdict for one leg across a report's rows.
  *
  * @param {object} report a parsed report/matrix.json
@@ -41,6 +60,14 @@ export function legVerdict(report, leg) {
   const rows = [...(report.results?.js ?? []), ...(report.results?.dotnet ?? [])];
   const relevant = rows.filter((row) => row.legs && leg in row.legs);
   const failures = [];
+
+  // Coverage first: a client with no rows cannot be judged by the loop below,
+  // so it has to be named here or its whole support window passes unswept.
+  for (const { client, why } of report.notSwept ?? []) {
+    failures.push(
+      `${client} was not swept at all (${why}) — this gate covers none of its support window`
+    );
+  }
 
   for (const row of relevant) {
     const { outcome, error } = row.legs[leg];

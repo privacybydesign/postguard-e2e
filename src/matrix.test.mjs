@@ -7,7 +7,17 @@ import assert from 'node:assert/strict';
 
 import { loadConfig } from './config.mjs';
 import { filterVersions } from './filter.mjs';
-import { LEGS, PROFILES, SUPPORT_MATRIX, resolveLegs, resolveProfile } from './matrix.mjs';
+import {
+  CLIENTS,
+  LEGS,
+  PROFILES,
+  SUPPORT_MATRIX,
+  clientsFor,
+  missingRequiredLegs,
+  resolveClient,
+  resolveLegs,
+  resolveProfile,
+} from './matrix.mjs';
 
 // A published list shaped like @e4a/pg-js's: three major lines, several patches
 // on the newest, a prerelease and an invalid entry.
@@ -64,6 +74,23 @@ test('resolveLegs defaults to every leg and rejects a typo', () => {
   assert.deepEqual(resolveLegs('wire, decrypt'), ['wire', 'decrypt']);
   assert.throws(() => resolveLegs('wire,decyrpt'), /unknown leg\(s\) decyrpt/);
   assert.throws(() => resolveLegs(','), /names no leg/);
+});
+
+test('resolveClient defaults to every client and rejects a typo', () => {
+  // `sweep -- jsx` used to match neither client, sweep nothing and exit 0.
+  assert.equal(resolveClient(undefined), 'all');
+  assert.equal(resolveClient('DotNet'), 'dotnet');
+  assert.throws(() => resolveClient('jsx'), /unknown client "jsx"/);
+  assert.deepEqual(clientsFor('all'), CLIENTS);
+  assert.deepEqual(clientsFor('js'), ['js']);
+});
+
+test('a profile cannot be swept with fewer legs than it holds mandatory', () => {
+  const { requires } = resolveProfile('nightly');
+  assert.deepEqual(missingRequiredLegs(requires, resolveLegs('wire')), ['decrypt']);
+  assert.deepEqual(missingRequiredLegs(requires, resolveLegs(undefined)), []);
+  // A manual sweep declares nothing, so it may run one leg.
+  assert.deepEqual(missingRequiredLegs(loadConfig({ env: {} }).requires, ['wire']), []);
 });
 
 test('a profile supplies the matrix and the target, and records where they came from', () => {

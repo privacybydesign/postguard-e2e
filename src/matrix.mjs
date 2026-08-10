@@ -39,6 +39,16 @@ export const SUPPORT_MATRIX = {
  * option existed ignore it and address the production types — that is a real
  * finding about those versions against a test-scheme deployment, not a harness
  * bug, and the report says which version sent what.
+ *
+ * The .NET wire leg cannot follow it at all: E4A.PostGuard 0.6.0 exposes no
+ * attribute-type override anywhere on the encrypt path (`PostGuardConfig` has
+ * only PkgUrl/CryptifyUrl/Headers/AllowInsecureUrls/HttpClient/Timeout, and
+ * `Recipient.Email(string)` takes the address alone — `ExtraAttribute` ADDS a
+ * conjunct rather than replacing the email type, so it is not a substitute).
+ * Under `pre-deploy` the .NET rows therefore address the production types
+ * whatever the profile says. If the candidate PKG rejects them for that, the
+ * red is this harness's limit and not an SDK regression; the fix is an
+ * attribute-type option in the SDK, not here.
  */
 export const PROFILES = {
   nightly: {
@@ -60,8 +70,42 @@ export const PROFILES = {
 /** Every leg the sweep knows how to run, in report order. */
 export const LEGS = ['wire', 'decrypt'];
 
+/** Every client the sweep knows how to drive, in report order. */
+export const CLIENTS = ['js', 'dotnet'];
+
 export function profileNames() {
   return Object.keys(PROFILES);
+}
+
+/**
+ * The client positional (`all` | `js` | `dotnet`), or a clear error. Rejecting a
+ * typo matches how a profile and a leg already behave: `sweep -- jsx` otherwise
+ * matches neither client, sweeps nothing and still exits 0.
+ */
+export function resolveClient(spec) {
+  const which = String(spec ?? 'all').toLowerCase();
+  if (which !== 'all' && !CLIENTS.includes(which)) {
+    throw new Error(`unknown client "${spec}" (have all, ${CLIENTS.join(', ')})`);
+  }
+  return which;
+}
+
+/** The clients a resolved positional puts in scope. */
+export function clientsFor(which) {
+  return which === 'all' ? [...CLIENTS] : [which];
+}
+
+/**
+ * The legs a profile holds mandatory that this run was not asked to sweep.
+ *
+ * Without this `requires` describes the profile instead of deciding anything,
+ * and `sweep --profile nightly --legs wire` runs one leg under a profile that
+ * declares two. The gates do catch it downstream, but they catch it as "no
+ * swept version ran the decrypt leg" — a report-shaped complaint about a
+ * command-line mistake.
+ */
+export function missingRequiredLegs(requires, legs) {
+  return (requires ?? []).filter((leg) => !legs.includes(leg));
 }
 
 /**

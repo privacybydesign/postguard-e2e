@@ -16,12 +16,13 @@ import { loadConfig } from './config.mjs';
 import { enumerateJs, enumerateDotnet } from './enumerate.mjs';
 import { filterVersions } from './filter.mjs';
 import { pickUniverse, startPkgStub } from './keys.mjs';
-import { resolveLegs } from './matrix.mjs';
+import { clientsFor, missingRequiredLegs, resolveClient, resolveLegs } from './matrix.mjs';
 import { writeReport } from './report.mjs';
 import { runDotnetVersion } from './run-dotnet.mjs';
 import { runJsVersion } from './run-js.mjs';
 import { sealWithNewStack } from './seal.mjs';
 import { commandExists } from './spawn.mjs';
+import { notSweptClients } from './verdict.mjs';
 
 function parseArgs(argv) {
   const positional = [];
@@ -33,13 +34,35 @@ function parseArgs(argv) {
       positional.push(argv[i]);
     }
   }
-  return { which: (positional[0] || 'all').toLowerCase(), ...flags };
+  return { which: positional[0], ...flags };
 }
 
 const args = parseArgs(process.argv.slice(2));
-const which = args.which;
-const legs = resolveLegs(args.legs);
-const config = loadConfig({ profile: args.profile ?? null });
+let which;
+let legs;
+let config;
+try {
+  // A typo in any of the three sweeps something other than what was asked for,
+  // so all three refuse rather than fall back. Same reporting as gate.mjs: the
+  // message is the useful part, a stack trace through resolveClient is not.
+  which = resolveClient(args.which);
+  legs = resolveLegs(args.legs);
+  config = loadConfig({ profile: args.profile ?? null });
+} catch (e) {
+  console.error(String(e.message ?? e));
+  process.exit(1);
+}
+
+// A profile declares which legs it holds mandatory, and a sweep that runs fewer
+// than that covers less than the profile promises.
+const missing = missingRequiredLegs(config.requires, legs);
+if (missing.length > 0) {
+  console.error(
+    `The ${config.profile} profile holds ${config.requires.join(', ')} mandatory, so it cannot ` +
+      `be swept without ${missing.join(', ')}.`
+  );
+  process.exit(1);
+}
 
 function summary(row) {
   const parts = legs.map((leg) => `${leg}=${row.legs?.[leg]?.outcome ?? 'n/a'}`);
@@ -66,8 +89,13 @@ if (config.emailAttribute) console.log(`  Email attribute: ${config.emailAttribu
 // the same bytes for every version on purpose: "this version cannot open what
 // that version can" is only a statement about the versions if the container is
 // identical.
+//
+// Only the pg-js decrypt leg opens it. The .NET decrypt leg is a reflection
+// probe over an SDK that has no reader at all, so a `dotnet`-only sweep needs no
+// artifact — and sealing one there would spend an install on nothing and let a
+// registry hiccup on @e4a/pg-wasm abort a run whose legs never needed it.
 let decrypt = null;
-if (legs.includes('decrypt')) {
+if (legs.includes('decrypt') && which !== 'dotnet') {
   let universe;
   let sealed;
   let stub;
@@ -102,6 +130,9 @@ console.log('');
 
 const results = { js: [], dotnet: [] };
 const harnessErrors = [];
+// Why a client contributed no rows, when the sweep knows. Read by
+// notSweptClients below, and from there by both gates.
+const notSweptWhy = {};
 
 if (which === 'js' || which === 'all') {
   try {
@@ -129,9 +160,8 @@ if (which === 'js' || which === 'all') {
 
 if (which === 'dotnet' || which === 'all') {
   if (!(await commandExists('dotnet'))) {
-    // Not a harness error on a developer machine, and the gate still fails on
-    // the empty .NET half — so a runner missing the SDK cannot pass as covered.
     console.log('E4A.PostGuard: dotnet SDK not found → skipping .NET sweep.');
+    notSweptWhy.dotnet = 'no dotnet SDK on the machine that ran the sweep';
   } else {
     try {
       const all = await enumerateDotnet();
@@ -164,10 +194,25 @@ if (decrypt) {
   await decrypt.stub.close();
 }
 
+// A client that was in scope and produced nothing is coverage loss the gates
+// cannot see for themselves, so it travels in the report. On a developer machine
+// a missing SDK is not a harness error; under a profile it is, because the
+// profile is a claim about a support window the sweep then did not touch.
+const notSwept = notSweptClients(clientsFor(which), results, notSweptWhy);
+if (config.profile) {
+  for (const { client, why } of notSwept) {
+    harnessErrors.push(
+      `${client} was not swept at all (${why}), so the ${config.profile} profile covered ` +
+        'none of its support window'
+    );
+  }
+}
+
 const paths = writeReport(results, config, {
   profile: config.profile,
   target: config.target,
   legs,
+  notSwept,
   decrypt: decrypt
     ? {
         universe: decrypt.universe,
