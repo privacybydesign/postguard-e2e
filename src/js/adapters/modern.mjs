@@ -13,6 +13,12 @@ const cryptifyUrl = process.env.PG_CRYPTIFY_URL;
 const apiKey = process.env.PG_API_KEY;
 const citizen = process.env.PG_CITIZEN_EMAIL || 'citizen@example.com';
 const org = process.env.PG_ORGANISATION_EMAIL || 'noreply@example.org';
+// The attribute type recipients are addressed with. A deployment issuing test
+// credentials runs its PKG with a demo type (postguard#236) and the SDK has to
+// match it; empty means the SDK's production defaults. Versions published
+// before the option existed ignore it — the report says which version sent
+// what, so that reads as a finding about the version rather than a harness bug.
+const emailAttribute = process.env.PG_EMAIL_ATTRIBUTE || '';
 
 // Record the X-POSTGUARD-CLIENT-VERSION the SDK actually sends (null for
 // versions predating that feature) by wrapping fetch.
@@ -33,7 +39,18 @@ function emit(obj) {
 }
 
 try {
-  const pg = new PostGuard({ pkgUrl, cryptifyUrl });
+  // Both recipient builders are used below, so both types have to move to the
+  // same scheme: the domain attribute is the email credential's other attribute
+  // (…email.email / …email.domain), so it is the same type with the last
+  // segment swapped rather than a second knob to keep in sync.
+  const emailAttributes = emailAttribute
+    ? { email: emailAttribute, domain: emailAttribute.replace(/\.email$/, '.domain') }
+    : null;
+  const pg = new PostGuard({
+    pkgUrl,
+    cryptifyUrl,
+    ...(emailAttributes ? { emailAttributes } : {}),
+  });
   const file = new File([new TextEncoder().encode('version-matrix probe')], 'vm.txt', {
     type: 'text/plain',
   });

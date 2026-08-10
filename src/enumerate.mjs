@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { isMain } from './is-main.mjs';
 
 /** All published versions of @e4a/pg-js (via the public npm registry). */
 export function enumerateJs() {
@@ -21,7 +22,7 @@ export async function enumerateDotnet() {
 }
 
 // Runnable directly: `node src/enumerate.mjs` prints both lists.
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   try {
     console.log('@e4a/pg-js (npm):');
     console.log('  ' + enumerateJs().join(', '));

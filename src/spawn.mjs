@@ -47,5 +47,6 @@ export function envForFlow(config) {
     PG_API_KEY: config.apiKey,
     PG_CITIZEN_EMAIL: config.citizen,
     PG_ORGANISATION_EMAIL: config.org,
+    PG_EMAIL_ATTRIBUTE: config.emailAttribute,
   };
 }

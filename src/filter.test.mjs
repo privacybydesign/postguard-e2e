@@ -33,6 +33,25 @@ test('"latest:" with a missing/garbage count defaults to 1', () => {
   assert.deepEqual(filterVersions(ALL, 'latest:x'), ['2.0.0']);
 });
 
+test('"majors:N" -> the newest stable release of each of the N highest majors', () => {
+  assert.deepEqual(filterVersions(ALL, 'majors:2'), ['2.0.0', '1.9.0']);
+  assert.deepEqual(filterVersions(ALL, 'majors:1'), ['2.0.0']);
+  // More majors than exist is not an error; it is the whole list.
+  assert.deepEqual(filterVersions(ALL, 'majors:9'), ['2.0.0', '1.9.0']);
+});
+
+test('"majors:" with a missing/garbage count defaults to 1', () => {
+  assert.deepEqual(filterVersions(ALL, 'majors:'), ['2.0.0']);
+  assert.deepEqual(filterVersions(ALL, 'majors:x'), ['2.0.0']);
+});
+
+test('"majors:N" never takes a prerelease, even as its major\'s newest', () => {
+  // 3.0.0-rc.1 is the highest 3.x, but an unreleased major is not a support
+  // window: asking for two majors here means 2.x and 1.x.
+  const all = [...ALL, '3.0.0-rc.1'];
+  assert.deepEqual(filterVersions(all, 'majors:2'), ['2.0.0', '1.9.0']);
+});
+
 test('comma list -> exactly the listed versions that exist, order preserved', () => {
   assert.deepEqual(filterVersions(ALL, '1.9.0,1.8.0'), ['1.9.0', '1.8.0']);
   // Whitespace is trimmed and unpublished entries are dropped.
