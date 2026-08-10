@@ -39,7 +39,11 @@ run_psql -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;'
 # The journal is drizzle's own record of migration order; taking the order from
 # it rather than from a filename sort keeps this honest if drizzle ever changes
 # how it names files.
-tags=$(sed -n 's/.*"tag"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$journal")
+#
+# grep -o rather than a line-oriented sed: drizzle pretty-prints the journal
+# today, but a minified one would put every entry on a single line and a
+# line-oriented match would silently see only the last of them.
+tags=$(grep -o '"tag"[[:space:]]*:[[:space:]]*"[^"]*"' "$journal" | sed 's/.*"\([^"]*\)"$/\1/')
 if [ -z "$tags" ]; then
     echo "provision: $journal lists no migrations" >&2
     exit 1
