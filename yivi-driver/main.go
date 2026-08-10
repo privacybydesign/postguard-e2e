@@ -49,7 +49,10 @@ func run() error {
 	}
 	defer os.RemoveAll(work)
 
-	srv, err := startLocalIrmaServer(fmt.Sprintf("localhost:%d", irmaPort), schemesSrc, privkeys, work, quietLogger())
+	logger := quietLogger()
+	irma.SetLogger(logger)
+
+	srv, err := startLocalIrmaServer(fmt.Sprintf("localhost:%d", irmaPort), schemesSrc, privkeys, work, logger)
 	if err != nil {
 		return err
 	}

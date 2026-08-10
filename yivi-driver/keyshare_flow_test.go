@@ -45,7 +45,14 @@ func TestKeyshareDisclosureFlow(t *testing.T) {
 		t.Skipf("irmago testdata not found at %s — set IRMAGO_ROOT to an irmago checkout", testdata)
 	}
 
+	// irmago's package-level logger is shared with every other test in this
+	// package, so quiet it only for the duration of this one. Leaving it at
+	// fatal-only would strip the logging whatever runs next is debugged with.
 	logger := quietLogger()
+	previousLogger := irma.Logger
+	irma.SetLogger(logger)
+	t.Cleanup(func() { irma.SetLogger(previousLogger) })
+
 	work := t.TempDir()
 
 	ks, err := startLocalKeyshareServer(scheme, testdata, keysharePinExpiry, logger)

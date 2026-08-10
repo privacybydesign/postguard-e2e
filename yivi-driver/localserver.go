@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/privacybydesign/irmago/irma"
 	"github.com/privacybydesign/irmago/irma/server"
 	"github.com/privacybydesign/irmago/irma/server/irmaserver"
 	"github.com/sirupsen/logrus"
@@ -101,11 +100,11 @@ func copyDir(src, dst string) error {
 	})
 }
 
-// quietLogger returns the logger the in-process servers run with, and points
-// irmago's package-level logger at it too.
+// quietLogger returns the logger the in-process servers run with. It does not
+// touch irma.SetLogger: that global is shared with everything else in this
+// package, so silencing it is the caller's decision to make and to undo.
 func quietLogger() *logrus.Logger {
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
-	irma.SetLogger(logger)
 	return logger
 }
