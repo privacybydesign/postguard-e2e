@@ -68,9 +68,21 @@ if (config.emailAttribute) console.log(`  Email attribute: ${config.emailAttribu
 // identical.
 let decrypt = null;
 if (legs.includes('decrypt')) {
-  const universe = pickUniverse(config.decryptSet);
-  const sealed = await sealWithNewStack(universe);
-  const stub = await startPkgStub(universe);
+  let universe;
+  let sealed;
+  let stub;
+  try {
+    universe = pickUniverse(config.decryptSet);
+    sealed = await sealWithNewStack(universe);
+    stub = await startPkgStub(universe);
+  } catch (e) {
+    // No artifact means no decrypt leg can run at all, so there is nothing to
+    // report and nothing for a gate to judge. Say why and stop here rather than
+    // sweeping on and writing a report whose decrypt column is empty for a
+    // reason no reader could recover.
+    console.error(`\nThe decrypt legs have no artifact to open: ${e.message}`);
+    process.exit(1);
+  }
   decrypt = {
     pkgUrl: stub.url,
     container: sealed.container,

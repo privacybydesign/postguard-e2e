@@ -76,13 +76,15 @@ export async function sealWithNewStack(universe, env = process.env) {
   );
   writeFileSync(join(sandboxDir, 'seal.mjs'), readFileSync(sealFlow));
 
-  const install = await run('npm', ['install', '--no-audit', '--no-fund', '--silent'], {
+  // --loglevel=error, not --silent: --silent swallows npm's reason for failing
+  // as well, and "the sealer would not install" with no cause is unactionable.
+  const install = await run('npm', ['install', '--no-audit', '--no-fund', '--loglevel=error'], {
     cwd: sandboxDir,
   });
   if (install.code !== 0) {
     throw new Error(
       `installing @e4a/pg-wasm@${version} (the new stack's sealer) failed: ` +
-        trimErr(install.stderr || install.stdout)
+        (trimErr(install.stderr || install.stdout) || `npm install exited ${install.code}`)
     );
   }
 

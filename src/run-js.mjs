@@ -64,10 +64,16 @@ export async function runJsVersion(version, config, { legs = ['wire'], decrypt =
     return result;
   }
 
-  const install = await run('npm', ['install', '--no-audit', '--no-fund', '--silent'], { cwd: dir });
+  // --loglevel=error rather than --silent: --silent swallows the failure too,
+  // so an "install fail" row arrived with no reason at all — exactly the column
+  // a reader needs when a supported version stops installing.
+  const install = await run('npm', ['install', '--no-audit', '--no-fund', '--loglevel=error'], {
+    cwd: dir,
+  });
   if (install.code !== 0) {
     result.install = 'fail';
-    result.error = trimErr(install.stderr || install.stdout);
+    result.error =
+      trimErr(install.stderr || install.stdout) || `npm install exited ${install.code}`;
     for (const leg of legs) {
       result.legs[leg] = { outcome: 'skipped_install_failed', error: result.error };
     }
