@@ -5,6 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { coverageScope } from './matrix.mjs';
 import { legVerdict, notSweptClients } from './verdict.mjs';
 
 const report = (js = [], dotnet = [], notSwept = []) => ({ results: { js, dotnet }, notSwept });
@@ -110,7 +111,7 @@ test('one client cannot certify a leg for the client that produced no rows', () 
 
 test('a client is only expected when the sweep had it in scope', () => {
   const results = { js: [row('js', '2.3.4', { wire: { outcome: 'pass' } })], dotnet: [] };
-  // `sweep -- js` never promised a .NET row, so nothing is missing.
+  // A manual `sweep -- js` never promised a .NET row, so nothing is missing.
   assert.deepEqual(notSweptClients(['js'], results), []);
   assert.deepEqual(notSweptClients(['js', 'dotnet'], results, { dotnet: 'no dotnet SDK' }), [
     { client: 'dotnet', why: 'no dotnet SDK' },
@@ -119,6 +120,41 @@ test('a client is only expected when the sweep had it in scope', () => {
   assert.deepEqual(notSweptClients(['dotnet'], results), [
     { client: 'dotnet', why: 'no version of it was swept' },
   ]);
+});
+
+test('under a profile a client the positional left out is unswept, not out of scope', () => {
+  // Where the scope comes from is the whole question. `notSweptClients` is honest
+  // about the set it is handed; the bug was handing it `clientsFor(which)`, so
+  // `sweep --profile nightly js` never expected a .NET row, wrote an empty
+  // notSwept and took both gates green over zero .NET rows — while the profile
+  // and SUPPORT_MATRIX still declared .NET supported. Pinned here through the
+  // gates, because the report is where the loss has to become visible.
+  const jsOnly = {
+    js: [row('js', '2.3.4', { wire: { outcome: 'pass' }, decrypt: { outcome: 'pass' } })],
+    dotnet: [],
+  };
+
+  assert.deepEqual(notSweptClients(coverageScope('js', null), jsOnly), []);
+
+  const notSwept = notSweptClients(coverageScope('js', 'nightly'), jsOnly, {
+    dotnet: 'the sweep was asked for js only',
+  });
+  assert.deepEqual(notSwept, [{ client: 'dotnet', why: 'the sweep was asked for js only' }]);
+  for (const leg of ['wire', 'decrypt']) {
+    const verdict = legVerdict({ results: jsOnly, notSwept }, leg);
+    assert.equal(verdict.ok, false, `${leg} must be red`);
+    assert.match(verdict.failures[0], /dotnet was not swept at all \(the sweep was asked for js/);
+  }
+
+  // The mirror image, `sweep --profile pre-deploy dotnet`: pg-js goes unswept,
+  // and nothing seals an artifact either, so its whole window is uncovered.
+  const dotnetOnly = {
+    js: [],
+    dotnet: [row('dotnet', '0.6.0', { wire: { outcome: 'pass' }, decrypt: { outcome: 'documented_refusal' } })],
+  };
+  const mirror = notSweptClients(coverageScope('dotnet', 'pre-deploy'), dotnetOnly);
+  assert.deepEqual(mirror, [{ client: 'js', why: 'no version of it was swept' }]);
+  assert.equal(legVerdict({ results: dotnetOnly, notSwept: mirror }, 'decrypt').ok, false);
 });
 
 test('an unknown outcome is red rather than assumed benign', () => {

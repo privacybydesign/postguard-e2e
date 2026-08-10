@@ -90,9 +90,24 @@ export function resolveClient(spec) {
   return which;
 }
 
-/** The clients a resolved positional puts in scope. */
+/** The clients a resolved positional puts in scope, i.e. what actually gets swept. */
 export function clientsFor(which) {
   return which === 'all' ? [...CLIENTS] : [which];
+}
+
+/**
+ * The clients this run is answerable for — which is NOT always what it swept.
+ *
+ * A profile is a claim about the whole support matrix ("every supported version
+ * still works against edge"), so under one, a client the positional left out is a
+ * window that went unswept rather than a window nobody asked about:
+ * `sweep --profile nightly js` must not report green over zero .NET rows, the way
+ * a runner without the .NET SDK must not. Without a profile a narrowing
+ * positional is exactly what it looks like, and a maintainer sweeping one client
+ * while working on its adapter owes nothing about the other.
+ */
+export function coverageScope(which, profile) {
+  return profile ? [...CLIENTS] : clientsFor(which);
 }
 
 /**

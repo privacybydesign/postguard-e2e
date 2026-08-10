@@ -13,6 +13,7 @@ import {
   PROFILES,
   SUPPORT_MATRIX,
   clientsFor,
+  coverageScope,
   missingRequiredLegs,
   resolveClient,
   resolveLegs,
@@ -83,6 +84,21 @@ test('resolveClient defaults to every client and rejects a typo', () => {
   assert.throws(() => resolveClient('jsx'), /unknown client "jsx"/);
   assert.deepEqual(clientsFor('all'), CLIENTS);
   assert.deepEqual(clientsFor('js'), ['js']);
+});
+
+test('a profile claims the whole matrix, so the positional cannot narrow what it covers', () => {
+  // The coverage question under a profile is the matrix's, not the command
+  // line's: `sweep --profile nightly js` swept one client and still owes an
+  // answer about the other, which is what keeps both gates red on it. Drawing
+  // this set from the positional instead let half the declared support matrix
+  // pass as covered.
+  assert.deepEqual(coverageScope('js', 'nightly'), CLIENTS);
+  assert.deepEqual(coverageScope('dotnet', 'pre-deploy'), CLIENTS);
+  assert.deepEqual(coverageScope('all', 'nightly'), CLIENTS);
+  // Without a profile a narrowing positional means what it says, so working on
+  // one adapter is not a fight with a red gate about the other.
+  assert.deepEqual(coverageScope('js', null), ['js']);
+  assert.deepEqual(coverageScope('all', null), CLIENTS);
 });
 
 test('a profile cannot be swept with fewer legs than it holds mandatory', () => {

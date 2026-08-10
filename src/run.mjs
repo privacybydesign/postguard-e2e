@@ -16,7 +16,13 @@ import { loadConfig } from './config.mjs';
 import { enumerateJs, enumerateDotnet } from './enumerate.mjs';
 import { filterVersions } from './filter.mjs';
 import { pickUniverse, startPkgStub } from './keys.mjs';
-import { clientsFor, missingRequiredLegs, resolveClient, resolveLegs } from './matrix.mjs';
+import {
+  clientsFor,
+  coverageScope,
+  missingRequiredLegs,
+  resolveClient,
+  resolveLegs,
+} from './matrix.mjs';
 import { writeReport } from './report.mjs';
 import { runDotnetVersion } from './run-dotnet.mjs';
 import { runJsVersion } from './run-js.mjs';
@@ -195,10 +201,20 @@ if (decrypt) {
 }
 
 // A client that was in scope and produced nothing is coverage loss the gates
-// cannot see for themselves, so it travels in the report. On a developer machine
-// a missing SDK is not a harness error; under a profile it is, because the
-// profile is a claim about a support window the sweep then did not touch.
-const notSwept = notSweptClients(clientsFor(which), results, notSweptWhy);
+// cannot see for themselves, so it travels in the report. The scope is the
+// profile's, not the positional's (see coverageScope): a client left out of
+// `sweep --profile nightly js` is a support window this run claimed and did not
+// touch, so it has to reach the gates the same way a missing .NET SDK does.
+//
+// On a developer machine a missing SDK is not a harness error; under a profile it
+// is, because the profile is a claim about a support window the sweep then did
+// not touch.
+const swept = clientsFor(which);
+const scope = coverageScope(which, config.profile);
+for (const client of scope) {
+  if (!swept.includes(client)) notSweptWhy[client] = `the sweep was asked for ${which} only`;
+}
+const notSwept = notSweptClients(scope, results, notSweptWhy);
 if (config.profile) {
   for (const { client, why } of notSwept) {
     harnessErrors.push(
