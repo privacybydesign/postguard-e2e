@@ -1,18 +1,31 @@
 // Regression tests for the auto-bump helpers.
 //
-// The two things that must not go wrong when a scheduled job rewrites the
+// The three things that must not go wrong when a scheduled job rewrites the
 // manifest unattended: it must never move `current` backwards or onto a
-// prerelease, and it must not reformat the file around the version it edits.
+// prerelease, it must not reformat the file around the version it edits, and it
+// must take the pins that follow `current` with it — a manifest bump on its own
+// opens a PR the corpus job fails.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { planBumps, applyBumps, setSdkCurrent, noBumpSummary } from './bump-manifest.mjs';
+import {
+  planBumps,
+  applyBumps,
+  setSdkCurrent,
+  noBumpSummary,
+  COUPLED_PINS,
+  planPinUpdates,
+  setDependencyPin,
+  lockedVersion,
+  pinLine,
+} from './bump-manifest.mjs';
 import { highestStable, registryOf, packageName } from './registries.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const manifestText = readFileSync(join(here, 'manifest.json'), 'utf8');
+const readTree = (...parts) => readFileSync(join(here, '..', ...parts), 'utf8');
 // Read the live values out of the manifest rather than hardcoding them: this
 // script's own PRs change them, and a test that pins them would go red on
 // every successful bump.
@@ -133,6 +146,86 @@ test('applyBumps: several bumps compose, and the file stays valid JSON', () => {
 
 test('applyBumps: an empty plan returns the text unchanged', () => {
   assert.equal(applyBumps(manifestText, []), manifestText);
+});
+
+test('planPinUpdates: a pg-js bump carries the fixtures corpus pin', () => {
+  const bumps = [{ key: 'pg-js', pkg: '@e4a/pg-js', from: '2.3.1', to: '2.3.3' }];
+  assert.deepEqual(planPinUpdates(bumps), [
+    { key: 'pg-js', dir: 'fixtures', dep: '@e4a/pg-js', to: '2.3.3' },
+  ]);
+});
+
+test('planPinUpdates: an entry with no coupled pin carries nothing', () => {
+  // pg-wasm is the one to watch: fixtures pins it too, but on purpose at a
+  // published version that ages against the corpus. Following the manifest
+  // would defeat what that pin is for.
+  const bumps = [
+    { key: 'pg-wasm', pkg: '@e4a/pg-wasm', from: '0.6.2', to: '0.6.3' },
+    { key: 'pg-dotnet', pkg: 'E4A.PostGuard', from: '0.6.0', to: '0.7.0' },
+  ];
+  assert.deepEqual(planPinUpdates(bumps), []);
+  assert.equal(COUPLED_PINS['pg-wasm'], undefined);
+});
+
+test('planPinUpdates: every coupled pin names a real sdk key and a real dep', () => {
+  for (const [key, pin] of Object.entries(COUPLED_PINS)) {
+    assert.ok(real.sdk[key], `COUPLED_PINS.${key} is not an sdk entry`);
+    const declared = JSON.parse(readTree(pin.dir, 'package.json')).dependencies?.[pin.dep];
+    assert.ok(declared, `${pin.dir}/package.json does not depend on ${pin.dep}`);
+  }
+});
+
+test('setDependencyPin: edits only the pin, leaving the rest of the file alone', () => {
+  const text = readTree('fixtures', 'package.json');
+  const { text: out, from } = setDependencyPin(text, '@e4a/pg-js', '9.9.9');
+  assert.equal(from, JSON.parse(text).dependencies['@e4a/pg-js']);
+  const before = text.split('\n');
+  const after = out.split('\n');
+  assert.equal(before.length, after.length);
+  const changed = before.map((l, i) => [l, after[i]]).filter(([a, b]) => a !== b);
+  assert.equal(changed.length, 1, `expected one changed line, got ${changed.length}`);
+  const parsed = JSON.parse(out);
+  assert.equal(parsed.dependencies['@e4a/pg-js'], '9.9.9');
+  // The other fixtures pin is not this script's business.
+  assert.equal(parsed.dependencies['@e4a/pg-wasm'], JSON.parse(text).dependencies['@e4a/pg-wasm']);
+});
+
+test('setDependencyPin: a pin already at the target is left byte-identical', () => {
+  const text = readTree('fixtures', 'package.json');
+  const at = JSON.parse(text).dependencies['@e4a/pg-js'];
+  assert.equal(setDependencyPin(text, '@e4a/pg-js', at).text, text);
+});
+
+test('setDependencyPin: names the file when the dep is not there', () => {
+  const text = readTree('fixtures', 'package.json');
+  assert.throws(
+    () => setDependencyPin(text, '@e4a/pg-nope', '1.0.0', 'fixtures/package.json'),
+    /fixtures\/package\.json: "dependencies" has no "@e4a\/pg-nope"/
+  );
+});
+
+test('lockedVersion: reads the installed version, not the declared range', () => {
+  const lock = readTree('fixtures', 'package-lock.json');
+  assert.equal(lockedVersion(lock, '@e4a/pg-js'), real.sdk['pg-js'].current);
+  assert.equal(lockedVersion(lock, '@e4a/pg-absent'), null);
+});
+
+test('pinLine: says whether the pin moved or only its lockfile', () => {
+  const pin = { dir: 'fixtures', dep: '@e4a/pg-js', from: '2.3.3', to: '2.3.4' };
+  assert.equal(
+    pinLine({ ...pin, pinWasStale: true }),
+    'fixtures: @e4a/pg-js 2.3.3 -> 2.3.4, with its lockfile entry'
+  );
+  assert.match(pinLine({ ...pin, pinWasStale: false }), /lockfile entry reconciled to 2\.3\.4/);
+});
+
+test('the fixtures corpus reader is pinned to the manifest current, in both files', () => {
+  // The invariant fixtures/readers.mjs enforces at verify time, asserted here
+  // where it costs a second instead of a corpus run: a tree where these
+  // disagree is the red PR issue #36 is about.
+  const declared = JSON.parse(readTree('fixtures', 'package.json')).dependencies['@e4a/pg-js'];
+  assert.equal(declared, real.sdk['pg-js'].current);
+  assert.equal(lockedVersion(readTree('fixtures', 'package-lock.json'), '@e4a/pg-js'), declared);
 });
 
 test('highestStable: maximum stable version, not the last one listed', () => {
