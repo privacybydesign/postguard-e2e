@@ -33,13 +33,10 @@
     },
     {
       "name": "postguard-outlook-addon",
-      "repo": "encryption4all/postguard-outlook-addon",
-      "manifest": "package.json",
+      "repo": "encryption4all/postguard-js",
+      "manifest": "apps/outlook-addon/package.json",
       "dep": "@e4a/pg-js",
-      "knownDrift": {
-        "reason": "Pins @e4a/pg-js ^1.10.0 — a full major version behind 2.x; cannot resolve the current SDK. Needs a v1→v2 migration.",
-        "issue": "encryption4all/postguard-outlook-addon#125"
-      }
+      "expect": "workspace"
     }
   ],
   "rust": {

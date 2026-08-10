@@ -1,7 +1,9 @@
 // Flow program for the "modern" E4A.PostGuard API. Copied into each version's
 // sandbox project and run with `dotnet run`. Prints a single
-// `__RESULT__ <json>` line. Mirrors postguard-examples/pg-dotnet (Flow 1:
-// silent encrypt + upload, the non-interactive server-facing path).
+// `__RESULT__ <json>` line. Mirrors postguard-js's `examples/pg-dotnet`
+// (Flow 1: silent encrypt + upload, the non-interactive server-facing path).
+// That example was `postguard-examples/pg-dotnet` until the repo was folded into
+// postguard-js and archived.
 using E4A.PostGuard;
 using E4A.PostGuard.Models;
 
