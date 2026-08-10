@@ -10,6 +10,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import {
   planBumps,
   applyBumps,
@@ -17,6 +19,7 @@ import {
   noBumpSummary,
   COUPLED_PINS,
   planPinUpdates,
+  applyPinUpdates,
   setDependencyPin,
   lockedVersion,
   pinLine,
@@ -26,6 +29,27 @@ import { highestStable, registryOf, packageName } from './registries.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
 const manifestText = readFileSync(join(here, 'manifest.json'), 'utf8');
 const readTree = (...parts) => readFileSync(join(here, '..', ...parts), 'utf8');
+
+/** A throwaway repo root with just the two files a coupled pin lives in. */
+function tempTree({ pin, locked }) {
+  const root = mkdtempSync(join(tmpdir(), 'compat-pin-'));
+  const dir = join(root, 'fixtures');
+  mkdirSync(dir);
+  writeFileSync(
+    join(dir, 'package.json'),
+    `${JSON.stringify({ dependencies: { '@e4a/pg-js': pin, '@e4a/pg-wasm': '0.6.1' } }, null, 2)}\n`
+  );
+  writeFileSync(
+    join(dir, 'package-lock.json'),
+    JSON.stringify({
+      packages: {
+        '': { dependencies: { '@e4a/pg-js': pin } },
+        'node_modules/@e4a/pg-js': { version: locked },
+      },
+    })
+  );
+  return root;
+}
 // Read the live values out of the manifest rather than hardcoding them: this
 // script's own PRs change them, and a test that pins them would go red on
 // every successful bump.
@@ -205,9 +229,52 @@ test('setDependencyPin: names the file when the dep is not there', () => {
 });
 
 test('lockedVersion: reads the installed version, not the declared range', () => {
-  const lock = readTree('fixtures', 'package-lock.json');
-  assert.equal(lockedVersion(lock, '@e4a/pg-js'), real.sdk['pg-js'].current);
+  const lock = JSON.stringify({
+    packages: {
+      '': { dependencies: { '@e4a/pg-js': '^2.3.0' } },
+      'node_modules/@e4a/pg-js': { version: '2.3.4' },
+    },
+  });
+  assert.equal(lockedVersion(lock, '@e4a/pg-js'), '2.3.4');
   assert.equal(lockedVersion(lock, '@e4a/pg-absent'), null);
+  // And it understands the shape npm actually writes.
+  assert.ok(lockedVersion(readTree('fixtures', 'package-lock.json'), '@e4a/pg-js'));
+});
+
+test('applyPinUpdates: reports a stale pin and, on a dry run, writes nothing', () => {
+  const root = tempTree({ pin: '2.3.3', locked: '2.3.3' });
+  const before = readFileSync(join(root, 'fixtures', 'package.json'), 'utf8');
+  const moved = applyPinUpdates(planPinUpdates([{ key: 'pg-js', to: '2.3.4' }]), {
+    dryRun: true,
+    root,
+  });
+  assert.equal(moved.length, 1);
+  assert.deepEqual(
+    { from: moved[0].from, to: moved[0].to, pinWasStale: moved[0].pinWasStale },
+    { from: '2.3.3', to: '2.3.4', pinWasStale: true }
+  );
+  assert.equal(readFileSync(join(root, 'fixtures', 'package.json'), 'utf8'), before);
+});
+
+test('applyPinUpdates: a pin at the target with a stale lockfile still needs work', () => {
+  // The state a run that died between the two writes leaves behind. Deciding
+  // from the pin alone would call it done and leave `npm ci` installing the
+  // version the corpus is no longer verified with.
+  const root = tempTree({ pin: '2.3.4', locked: '2.3.3' });
+  const moved = applyPinUpdates(planPinUpdates([{ key: 'pg-js', to: '2.3.4' }]), {
+    dryRun: true,
+    root,
+  });
+  assert.equal(moved.length, 1);
+  assert.equal(moved[0].pinWasStale, false);
+});
+
+test('applyPinUpdates: a tree already at the target is left alone', () => {
+  const root = tempTree({ pin: '2.3.4', locked: '2.3.4' });
+  assert.deepEqual(
+    applyPinUpdates(planPinUpdates([{ key: 'pg-js', to: '2.3.4' }]), { dryRun: true, root }),
+    []
+  );
 });
 
 test('pinLine: says whether the pin moved or only its lockfile', () => {

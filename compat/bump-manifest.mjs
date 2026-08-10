@@ -191,7 +191,9 @@ export const COUPLED_PINS = {
 
 /** Which coupled pins a set of manifest bumps has to carry along. */
 export function planPinUpdates(bumps, coupled = COUPLED_PINS) {
-  return bumps.flatMap((b) => (coupled[b.key] ? [{ ...coupled[b.key], key: b.key, to: b.to }] : []));
+  return bumps.flatMap((b) =>
+    coupled[b.key] ? [{ ...coupled[b.key], key: b.key, to: b.to }] : []
+  );
 }
 
 /**
@@ -262,14 +264,15 @@ function reconcileLockfile(dir, label) {
  * Move every coupled pin (and its lockfile entry) onto the bumped version.
  *
  * Decides per pin by comparing the tree against the target rather than by
- * assuming the pre-bump state, so a run interrupted between the two writes
- * converges when it is run again instead of leaving a pin the next run thinks
- * is already done. Returns one entry per pin that needed work, for the log.
+ * assuming the pre-bump state. Together with running before the manifest is
+ * written (see main), that makes a run interrupted partway converge when it is
+ * run again: the pin may already be there while its lockfile is not, and only
+ * the tree can say which. Returns one entry per pin that needed work.
  */
-export function applyPinUpdates(updates, { dryRun = false } = {}) {
+export function applyPinUpdates(updates, { dryRun = false, root = repoRoot } = {}) {
   const moved = [];
   for (const update of updates) {
-    const dir = join(repoRoot, update.dir);
+    const dir = join(root, update.dir);
     const manifestFile = join(dir, 'package.json');
     const label = `${update.dir}/package.json`;
     const text = readFileSync(manifestFile, 'utf8');
@@ -322,10 +325,13 @@ async function main() {
     return;
   }
 
-  if (!dryRun) writeFileSync(file, applyBumps(text, bumps));
-  // After the manifest, so a pin that cannot be written leaves a tree whose
-  // manifest still asks for the move — see applyPinUpdates.
+  // Coupled pins first, manifest last: a pin (or lockfile) that cannot be
+  // written then leaves `current` where it was, so the next run plans the same
+  // bump and retries it. The other order strands the tree — `current` is
+  // already at latest, so the run after it plans no bumps and never comes back
+  // to the pin this one left behind.
   const pins = applyPinUpdates(planPinUpdates(bumps), { dryRun });
+  if (!dryRun) writeFileSync(file, applyBumps(text, bumps));
 
   for (const b of bumps) console.log(`${b.pkg}: ${b.from} -> ${b.to}`);
   for (const pin of pins) console.log(pinLine(pin));
