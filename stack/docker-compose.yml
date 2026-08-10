@@ -98,34 +98,71 @@ services:
         depends_on:
             irma-ready:
                 condition: service_completed_successfully
-            business-db:
-                condition: service_healthy
+            # Not business-db directly: the PKG must not start until the schema
+            # and seed are in place, and business-migrate already waits for the
+            # database to be healthy.
+            business-migrate:
+                condition: service_completed_successfully
         networks: [pg]
 
-    # Minimal postguard-business DB: just the tables the PKG's API-key lookup
-    # reads, seeded with one org (01-schema.sql) + one API key derived from
-    # PG_API_KEY at init (02-provision-api-key.sh).
+    # postguard-business's database, with postguard-business's OWN schema:
+    # business-schema-source fetches its drizzle migrations and business-migrate
+    # applies them, then seeds data on top. Empty until those two have run.
     business-db:
         image: postgres:16-alpine
         environment:
             - POSTGRES_USER=postguard
             - POSTGRES_PASSWORD=postguard
             - POSTGRES_DB=postguard
-            # Passed through from the host env; 02-provision-api-key.sh derives
-            # key_hash = sha256(PG_API_KEY) at init. Unset => no key row seeded.
-            - PG_API_KEY
         healthcheck:
             test: ['CMD-SHELL', 'pg_isready -U postguard -d postguard']
             interval: 5s
             timeout: 3s
             retries: 10
             start_period: 10s
-        # No persistent volume: the DB is ephemeral so editing the init scripts
-        # and recreating the container re-applies them (Postgres only runs
-        # /docker-entrypoint-initdb.d scripts on an empty data dir).
+        networks: [pg]
+
+    # One-shot: fetch the business schema from its owner. postguard-business is
+    # public and UNPINNED by default, for the same reason ../../postguard is —
+    # it is a system under test, and a migration there that moves a column the
+    # PKG reads must fail this stack. Set PGB_REF to pin a local run.
+    business-schema-source:
+        image: alpine/git:latest
+        # entrypoint + command rather than entrypoint alone: overriding only the
+        # entrypoint leaves the image's CMD appended as a stray argument.
+        entrypoint: ['/bin/sh']
+        command: ['/provision/fetch-migrations.sh']
+        environment:
+            - PGB_REPO
+            - PGB_REF
         volumes:
-            - ./business-db/01-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-            - ./business-db/02-provision-api-key.sh:/docker-entrypoint-initdb.d/02-provision-api-key.sh:ro
+            - ./business-db:/provision:ro
+            - business-migrations:/src
+        networks: [pg]
+
+    # One-shot: apply those migrations to business-db, then seed test DATA on
+    # top (seed-data.sql carries no DDL). Runs on every `up`, dropping and
+    # rebuilding the schema, so a stale anonymous volume cannot hide drift.
+    business-migrate:
+        image: postgres:16-alpine
+        entrypoint: ['/bin/sh']
+        command: ['/provision/provision.sh']
+        environment:
+            - PGHOST=business-db
+            - PGUSER=postguard
+            - PGPASSWORD=postguard
+            - PGDATABASE=postguard
+            # Passed through from the host env; provision.sh derives
+            # key_hash = sha256(PG_API_KEY). Unset => no key row seeded.
+            - PG_API_KEY
+        volumes:
+            - ./business-db:/provision:ro
+            - business-migrations:/src:ro
+        depends_on:
+            business-db:
+                condition: service_healthy
+            business-schema-source:
+                condition: service_completed_successfully
         networks: [pg]
 
     # Encrypted file host + email delivery (built from ../../cryptify working tree).
@@ -189,3 +226,5 @@ volumes:
     pkg-target:
     cryptify-data:
     cryptify-target:
+    # postguard-business checkout shared between the two one-shots above.
+    business-migrations:

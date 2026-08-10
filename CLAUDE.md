@@ -8,6 +8,30 @@ The `yivi-driver/` module (headless Yivi holder) builds on irmago's `client.Clie
 
 For any postguard-e2e / yivi-driver review, expect tests to be SKIPPED locally: do static review, gofmt, and import-chain checks, and defer runtime verification to CI. CI must install `libsqlcipher-dev` and use Go 1.26. irmago master already carries the `client.New` signature and the packages the driver imports, so a pinned published irmago release (rather than the local `../../irmago` replace) is viable once tagged.
 
+### stack/business-db: the schema is postguard-business's, not ours
+`business-db` is provisioned from postguard-business's real `drizzle/migrations`
+(fetched at `up` time into a volume by `business-schema-source`, applied by
+`business-migrate`). `seed-data.sql` is DATA ONLY — never add DDL to it. Adding a
+column there to make something work means the harness has started asserting
+against its own fixture again, which is the exact regression postguard#237 was
+about; the change belongs in postguard-business.
+
+`provision.sh` takes migration ORDER from `meta/_journal.json`, not from a
+filename sort, and fails if the journal and the `.sql` files disagree. It applies
+each file with plain `psql -f` (no `--single-transaction`): postguard-business's
+own migration-safety checker pushes new migrations towards
+`CREATE INDEX CONCURRENTLY`, which cannot run inside a transaction block.
+
+Provisioning is a one-shot container, not a `/docker-entrypoint-initdb.d` script:
+initdb scripts only fire on an empty data dir and the postgres image keeps an
+anonymous volume, so the old init-script seed silently stopped re-applying after
+the first `up`. The one-shot drops and rebuilds the schema every time instead.
+
+You can rehearse the whole thing without Docker: the workspace has no daemon, but
+a zonky embedded-postgres tarball plus a `psql` extracted from a pgdg
+`postgresql-client-16` .deb gives a real server and a real client, and the two
+scripts run as-is against it (`PGB_MIGRATIONS_DIR` / `PGB_DEST` / `PGHOST`…).
+
 ### compat/: the manifest is edited as text, not reserialised
 `compat/manifest.json` writes each `sdk[*]` entry on one line. `bump-manifest.mjs` (run unattended by a scheduled job) patches the version string in place so its PRs are a one-line diff. Do not run a formatter over the manifest and do not "tidy" the bumper into `JSON.parse` + `JSON.stringify`: a round-trip turns every one-line entry into four and buries the actual change. `bump-manifest.test.mjs` asserts the one-line property and reads its expected versions out of the manifest, so it survives its own bumps.
 

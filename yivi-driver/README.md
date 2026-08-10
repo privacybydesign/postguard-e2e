@@ -84,7 +84,8 @@ Defaults point at the sibling checkouts / provisioned scheme; override via env:
 - ✅ **#204:** headless holder — self-test (in-process VALID proof) +
   `TestPKGInitiatedDisclosureYieldsJWT` (PKG-initiated disclosure → valid JWT).
 - ✅ **#203:** `../stack` brings up PKG + irma-server + cryptify + mailcrab
-  (+ a minimal business-db) with the irma-server wired for test-scheme issuance.
+  (+ a business-db on postguard-business's real schema) with the irma-server
+  wired for test-scheme issuance.
 - ✅ **#205:** full golden flow — `TestGoldenFlow` seals, uploads, emails,
   discloses (headless), decrypts, and verifies — no phone, no browser.
 
