@@ -5,8 +5,11 @@
 //
 // This is the keystone for EPIC issue #204: it demonstrates that a full Yivi
 // disclosure (and therefore PostGuard decryption) can be driven end-to-end in
-// CI with no phone. Paths default to the sibling irmago/postguard-website
-// checkouts and can be overridden via env vars.
+// CI with no phone. The only checkout path it needs is a sibling irmago
+// (IRMAGO_ROOT, default ../../irmago); it can be overridden via env vars. An
+// earlier version of this comment also named postguard-website, which no longer
+// exists as a repo — the site is postguard-js's apps/website — and was never a
+// path default here anyway.
 package main
 
 import (

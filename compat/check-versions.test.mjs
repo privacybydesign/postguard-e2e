@@ -261,9 +261,14 @@ test('readFailureMessage: any other read failure still reports the cause', () =>
 const consumerByName = Object.fromEntries(manifest.sdkConsumers.map((c) => [c.name, c]));
 
 test('manifest: the consolidated apps are read from the monorepo, not their archived repos', () => {
-  // encryption4all/postguard-website is archived and postguard-tb-addon is
-  // stale; both apps live in postguard-js now. Reading the old repos was a
-  // permanent silent-green (encryption4all/postguard-e2e#30).
+  // All three apps live in postguard-js now and all three source repos are
+  // archived. Reading an old repo was a permanent silent-green
+  // (encryption4all/postguard-e2e#30) — and note the shape of the outlook case,
+  // because it is the one this test was originally written without. An archived
+  // repo is read-only, not deleted, so its package.json keeps resolving: the
+  // read never 404s, `readFailureMessage` never fires, and the stale ^1.10.0 pin
+  // was reported as covered knownDrift indefinitely. Silent-green survives a
+  // repo being archived precisely because nothing about the fetch changes.
   assert.deepEqual(
     { repo: consumerByName['postguard-website'].repo, manifest: consumerByName['postguard-website'].manifest },
     { repo: 'encryption4all/postguard-js', manifest: 'apps/website/package.json' }
@@ -272,8 +277,31 @@ test('manifest: the consolidated apps are read from the monorepo, not their arch
     { repo: consumerByName['postguard-tb-addon'].repo, manifest: consumerByName['postguard-tb-addon'].manifest },
     { repo: 'encryption4all/postguard-js', manifest: 'apps/tb-addon/package.json' }
   );
-  for (const name of ['postguard-website', 'postguard-tb-addon']) {
+  assert.deepEqual(
+    {
+      repo: consumerByName['postguard-outlook-addon'].repo,
+      manifest: consumerByName['postguard-outlook-addon'].manifest,
+    },
+    { repo: 'encryption4all/postguard-js', manifest: 'apps/outlook-addon/package.json' }
+  );
+  for (const name of ['postguard-website', 'postguard-tb-addon', 'postguard-outlook-addon']) {
     assert.equal(consumerByName[name].expect, 'workspace');
+  }
+});
+
+test('manifest: no sdkConsumers entry reads from an archived repository', () => {
+  // The five repos folded into postguard-js / postguard and archived in
+  // encryption4all/postguard#288-#291 and #293. Archiving does not break a read,
+  // so this has to be asserted rather than discovered.
+  const archived = [
+    'encryption4all/postguard-website',
+    'encryption4all/postguard-tb-addon',
+    'encryption4all/postguard-outlook-addon',
+    'encryption4all/postguard-examples',
+    'encryption4all/cryptify',
+  ];
+  for (const c of manifest.sdkConsumers) {
+    assert.ok(!archived.includes(c.repo), `${c.name}: reads from archived ${c.repo}`);
   }
 });
 
