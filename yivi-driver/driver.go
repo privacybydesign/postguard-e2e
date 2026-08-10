@@ -40,8 +40,7 @@ type YiviDriver struct {
 	// pin is empty until KeyshareEnroll succeeds; a session that asks for a PIN
 	// before that is an error, not something to guess an answer for.
 	pin string
-	// pinRequests counts the PIN prompts answered over this holder's lifetime,
-	// so a test can assert the keyshare leg was actually walked.
+	// pinRequests counts the PIN prompts answered over this holder's lifetime.
 	pinRequests int
 }
 
@@ -83,8 +82,8 @@ func NewYiviDriver(storagePath, irmaConfigAssets, eudiPath string) (*YiviDriver,
 
 // KeyshareEnroll registers the holder with the keyshare server of scheme, which
 // takes over half of its secret key for that scheme's credentials. pin is
-// remembered and used to answer the PIN prompts every later session over a
-// keyshare-backed credential raises. Blocks until the keyshare server answers.
+// remembered and used to answer any PIN prompt a later session raises. Blocks
+// until the keyshare server answers.
 func (d *YiviDriver) KeyshareEnroll(scheme irma.SchemeManagerIdentifier, pin string) error {
 	d.c.KeyshareEnroll(scheme, nil, pin, "en")
 	if err := d.handler.AwaitEnrollmentResult(); err != nil {
@@ -94,8 +93,12 @@ func (d *YiviDriver) KeyshareEnroll(scheme irma.SchemeManagerIdentifier, pin str
 	return nil
 }
 
-// PinRequests is how many keyshare PIN prompts this holder has answered. A
-// keyshare-backed flow that reports zero did not go through the keyshare server.
+// PinRequests is how many keyshare PIN prompts this holder has answered.
+//
+// Zero does NOT mean the keyshare server was bypassed: irmaclient reuses a
+// cached PIN authentication, so most sessions are keyshare-backed without
+// prompting. To show a proof was co-computed, count the keyshare server's
+// /prove/* calls instead (localKeyshareServer.ProofRequests).
 func (d *YiviDriver) PinRequests() int { return d.pinRequests }
 
 // aesKeyEnv is the env var used to supply a fixed storage-encryption key so
