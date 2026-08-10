@@ -152,19 +152,33 @@ jobs:
           ref: de4b4b713f17e92c7181d45dbfdd848784e82b74
           path: irmago
 
-      # postguard and cryptify are deliberately UNPINNED (default branch):
-      # they are the systems under test — the whole point of the nightly run
-      # is to detect when their `main` drifts against the harness/contracts
-      # (this already caught pg-pkg making --allowed-origins mandatory). A
-      # red nightly here means "PostGuard main changed behavior", not "the
-      # harness is broken".
+      # postguard is deliberately UNPINNED (default branch): it is the system
+      # under test — the whole point of the nightly run is to detect when its
+      # `main` drifts against the harness/contracts (this already caught pg-pkg
+      # making --allowed-origins mandatory). A red nightly here means "PostGuard
+      # main changed behavior", not "the harness is broken".
       - name: Checkout postguard (PKG)
         uses: actions/checkout@v7
         with:
           repository: encryption4all/postguard
           path: postguard
 
-      - name: Checkout cryptify
+      # cryptify is checked out UNPINNED for the same stated reason, and that
+      # reason no longer holds: encryption4all/cryptify was archived on
+      # 2026-08-09. Its default branch cannot drift, so this is a frozen June
+      # snapshot dressed as a system under test — it predates the three security
+      # fixes released as cryptify-v0.1.28 and the /metrics endpoint. Nothing
+      # fails; the stack comes up and the nightly reports on stale code. See
+      # encryption4all/postguard#312.
+      #
+      # The service moved into the postguard workspace in postguard#277 and is
+      # already present in the checkout above at postguard/cryptify. Repointing
+      # this (and stack/docker-compose.yml's `context: ../../cryptify`) is
+      # blocked on cryptify/dev.Dockerfile becoming workspace-aware: cryptify
+      # depends on pg-core by path and has no lockfile of its own, so it cannot
+      # build with cryptify/ as the context. Tracked in
+      # encryption4all/postguard#325 — delete this step as part of that.
+      - name: Checkout cryptify (ARCHIVED — frozen, see postguard#325)
         uses: actions/checkout@v7
         with:
           repository: encryption4all/cryptify

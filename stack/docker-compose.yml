@@ -131,6 +131,12 @@ services:
     # Encrypted file host + email delivery (built from ../../cryptify working tree).
     # Its conf/config.dev.toml already points pkg_url -> postguard-pkg and
     # smtp -> mailcrab, matching the service names here.
+    #
+    # ../../cryptify is a checkout of encryption4all/cryptify, which is ARCHIVED:
+    # this builds a frozen snapshot, not current cryptify. The service lives at
+    # postguard/cryptify now, and moving this context there is blocked on
+    # cryptify/dev.Dockerfile becoming workspace-aware (it depends on pg-core by
+    # path and has no lockfile of its own). See encryption4all/postguard#325.
     cryptify:
         image: postguard-e2e-cryptify:dev
         build:
