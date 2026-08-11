@@ -1,0 +1,156 @@
+# Published-SDK version sweep (issue #21).
+#
+# The deploy-time backstop for the PR-time wire-compat gate in
+# encryption4all/postguard: it takes the SDK versions the support matrix
+# declares supported (src/matrix.mjs — the last two @e4a/pg-js majors, the last
+# E4A.PostGuard major) and runs two legs against them.
+#
+#   wire     the non-interactive server-facing path against the target
+#            deployment: params -> encrypt -> upload -> download/inspect
+#   decrypt  an OLD published SDK opening an artifact the NEW stack sealed —
+#            the direction that breaks consumers. Needs no server.
+#
+# Triggers:
+#   - pull_request:      the harness's own unit tests
+#   - schedule:          nightly sweep against edge
+#   - workflow_dispatch: any profile, by hand
+#   - workflow_call:     so a deploy pipeline can run the pre-deploy profile
+#                        against candidate images it has already brought up:
+#       jobs:
+#         sweep:
+#           uses: encryption4all/postguard-e2e/.github/workflows/version-sweep.yml@main
+#           with:
+#             profile: pre-deploy
+#             pkg_url: https://pkg.candidate.internal
+#             cryptify_url: https://storage.candidate.internal
+#           secrets:
+#             api_key: ${{ secrets.PG_API_KEY }}
+#
+# Which job runs is decided by `inputs.profile`, NOT by github.event_name: in a
+# called workflow the `github` context is the CALLER's, so a pull_request-
+# triggered deploy pipeline would otherwise skip the sweep, run this repo's unit
+# tests instead and report green to a caller asking whether the candidate is
+# compatible. `inputs` is non-empty only for workflow_call/workflow_dispatch,
+# which is exactly the distinction needed, and `profile` is required on the
+# workflow_call side so it cannot arrive empty.
+name: version-sweep
+
+on:
+  # Deliberately unscoped by `paths:`. A job skipped by a path filter reports no
+  # status at all, so a required check that names it leaves every PR that missed
+  # the filter pending forever (postguard#265, wire-compat-rust). `unit` is the
+  # job that closes the "nothing under src/ runs in CI" gap and is therefore the
+  # one worth requiring, and npm ci + npm test here costs well under a minute.
+  pull_request:
+  schedule:
+    - cron: '0 4 * * *' # 04:00 UTC, after the 03:00 e2e nightly
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'Support-matrix profile to sweep'
+        type: choice
+        options: [nightly, pre-deploy]
+        default: nightly
+      pkg_url:
+        description: 'Override the profile PKG URL'
+        type: string
+        default: ''
+      cryptify_url:
+        description: 'Override the profile Cryptify URL'
+        type: string
+        default: ''
+  workflow_call:
+    inputs:
+      profile:
+        type: string
+        required: true
+      pkg_url:
+        type: string
+        default: ''
+      cryptify_url:
+        type: string
+        default: ''
+    secrets:
+      api_key:
+        required: false
+
+concurrency:
+  group: version-sweep-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The harness's own tests. Until this job existed nothing under src/ ran in
+  # CI at all (e2e.yml's pull_request paths do not include it), so the matrix
+  # definition, the gate contract and the version filters were unguarded.
+  unit:
+    if: github.event_name == 'pull_request' && !inputs.profile
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm test
+
+  sweep:
+    if: github.event_name != 'pull_request' || inputs.profile
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # A schedule carries no inputs, so the nightly's profile is named here.
+      PG_PROFILE: ${{ inputs.profile || 'nightly' }}
+      PG_PKG_URL: ${{ inputs.pkg_url || '' }}
+      PG_CRYPTIFY_URL: ${{ inputs.cryptify_url || '' }}
+      # Empty for a caller that passes no key: the wire leg then reports
+      # skipped_no_api_key and the wire gate fails on it, which is the point —
+      # a leg that quietly did not run is coverage loss, not a pass.
+      PG_API_KEY: ${{ secrets.api_key || secrets.PG_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      # The .NET sandboxes target net8.0: the SDK builds them, the RUNTIME is
+      # what `dotnet run` needs. Without this the sweep exits nonzero because
+      # the .NET half of the support matrix was never swept at all.
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      - run: npm ci
+
+      # Writes report/matrix.{md,csv,json} and the job summary. Exits nonzero
+      # only when the harness could not do its job (a registry that would not
+      # answer, a filter that resolved to nothing, an artifact that would not
+      # seal, a client that was not swept at all) — the verdict on the results
+      # belongs to the two gates below, so this step always gets as far as
+      # writing the report they read.
+      - name: Sweep the support matrix
+        run: npm run sweep -- --profile "$PG_PROFILE"
+
+      # Gate 1: do the supported published versions still work against this
+      # deployment?
+      - name: Gate — wire compatibility
+        if: ${{ !cancelled() }}
+        run: npm run gate -- --legs wire
+
+      # Gate 2, a DIFFERENT question: can an old published SDK still open what
+      # the new stack seals? `!cancelled()` because a failed step short-circuits
+      # the rest of its job — without it this verdict is invisible on exactly
+      # the runs it exists for, which are the runs where the wire gate is
+      # already red.
+      - name: Gate — decrypt legs (old SDK opens new-stack artifact)
+        if: ${{ !cancelled() }}
+        run: npm run gate -- --legs decrypt
+
+      - name: Upload the matrix report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: version-matrix-${{ env.PG_PROFILE }}
+          path: report/matrix.*
+          if-no-files-found: warn
