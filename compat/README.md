@@ -58,6 +58,19 @@ to the published latest and opens a PR with the result. Consumer ranges and the
 `knownDrift` ratchet stay as they are, so what is still red after the bump is
 real drift in another repo.
 
+`sdk["pg-js"].current` is not read only here. `fixtures/readers.mjs` verifies
+the archival container corpus with exactly that version of `@e4a/pg-js` and
+refuses to run when the installed one disagrees, so a bump that moved the
+manifest alone opened a PR the corpus job failed and nothing in the tree could
+clear. The bumper therefore moves `fixtures/package.json`'s pin in the same run
+and reconciles `fixtures/package-lock.json` with `npm install
+--package-lock-only`, and a bump PR touches three files instead of one.
+
+Which pins follow the manifest is the `COUPLED_PINS` table in
+`bump-manifest.mjs`. `fixtures`' `@e4a/pg-wasm` is deliberately absent: it is
+pinned published as the client half of the read-forever contract and is meant to
+age against the corpus.
+
 The bump only ratchets forward. A prerelease, a version the registry serves
 that semver can't parse, or a latest older than `current` (an unpublished
 release) is reported and skipped, never applied. `check-versions.mjs` asks the
@@ -66,12 +79,13 @@ prerelease on the `latest` dist-tag is a note there rather than a red, and the
 rest say what actually needs doing instead of naming a bump that won't run.
 
 ```bash
-cd compat && npm run bump              # rewrite manifest.json in place
+cd compat && npm run bump              # rewrite manifest.json + the coupled pins
 cd compat && npm run bump -- --dry-run # report only
 ```
 
-Bumps go to stdout as `pkg: from -> to`, one per line, for the PR body; status
-and skips go to stderr. Nothing to bump means no output and no rewrite.
+Bumps go to stdout as `pkg: from -> to`, one per line, for the PR body, followed
+by a line per coupled pin the run carried along; status and skips go to stderr.
+Nothing to bump means no output and no rewrite.
 
 The Rust `irmaLib.current` is not auto-bumped: crates.io is not wired up, and
 that version moves with a deliberate migration rather than a release.
