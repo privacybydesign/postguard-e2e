@@ -1,12 +1,20 @@
 ## Agent notes (migrated from the dobby memory repo)
 
-### yivi-driver: local build/test is blocked in the workspace
-The `yivi-driver/` module (headless Yivi holder) builds on irmago's `client.Client`. Three things block building or running it in the Coder workspace:
-- **Native sqlcipher (cgo).** `client.New` unconditionally imports a storage package that pulls in sqlcipher (no build tag to opt out), so `go build`/`go run`/`go test` fail at compile with a "package sqlcipher was not found in the pkg-config search path" error. It needs `libsqlcipher-dev`, which the workspace can't install (no root). Same cgo-sqlcipher wall as irmamobile's local tests.
-- **Go 1.26.** irmago master and `yivi-driver/go.mod` both declare `go 1.26.0`. The workspace ships an older Go; `GOTOOLCHAIN=auto` auto-downloads 1.26 fine, but `GOTOOLCHAIN=local` errors.
-- **Docker daemon unavailable**, so the docker-compose stack (PKG + irma-server + cryptify + mailcrab) can't be brought up, meaning the disclosure-flow integration test only ever skips locally.
+### yivi-driver: what does and does not run locally
+The `yivi-driver/` module (headless Yivi holder) builds on irmago's `client.Client`, which needs cgo + native sqlcipher. The workspace now ships `libsqlcipher-dev` (`pkg-config --modversion sqlcipher` answers 4.5), so `go build`, `go vet`, `go run .` and `go test` all work — check that before assuming the old "cannot build here" story. Two things still apply:
+- **Go 1.26.** irmago master and `yivi-driver/go.mod` both declare `go 1.26.0`, and the workspace ships an older Go. `GOTOOLCHAIN=auto` auto-downloads 1.26 (needs network on the first build); `GOTOOLCHAIN=local` errors.
+- **Docker daemon unavailable**, so the docker-compose stack (PKG + irma-server + cryptify + mailcrab) can't be brought up. Every stack-based test — `TestGoldenFlow`, `TestRealSdkGoldenFlow`, `TestPKGInitiatedDisclosureYieldsJWT`, `TestEmailRecipientRoundTrip`, `TestLiveContract` — SKIPS locally, and only CI can verify them.
 
-For any postguard-e2e / yivi-driver review, expect tests to be SKIPPED locally: do static review, gofmt, and import-chain checks, and defer runtime verification to CI. CI must install `libsqlcipher-dev` and use Go 1.26. irmago master already carries the `client.New` signature and the packages the driver imports, so a pinned published irmago release (rather than the local `../../irmago` replace) is viable once tagged.
+Two flows need no stack at all and are the local signal worth having: `go run .` (the in-process self-test) and `TestKeyshareDisclosureFlow`. Both want an irmago checkout, defaulting to `../../irmago` (`IRMAGO_ROOT`) to match go.mod's `replace`; clone it at the ref `.github/workflows/e2e.yml` pins, or a driver change will be verified against a different irmago than CI uses. irmago master already carries the `client.New` signature and the packages the driver imports, so a pinned published irmago release (rather than the local replace) is viable once tagged.
+
+### yivi-driver: `-race` reports an irmago bug, not ours
+`go test -race` on any flow that holds a client open for a few seconds after an issuance reports a data race inside irmago: the revocation job `client.New` schedules (`irma/irmaclient/revocation.go:48-49`, run by gocron) reads client state that `IrmaClient.addCredential` (`irmaclient.go:336`) writes. Both sides of the race are irmago frames; no yivi-driver code appears in either stack. It reproduces on a plain `irma-demo` issuance with no keyshare involved, so it is not specific to any one flow — it just needs the process to live long enough for the cron tick to land, which the fast flows never do. `e2e.yml` runs `go test` without `-race`, so it does not redden CI. Worth reporting upstream; do not chase it as a harness bug.
+
+### yivi-driver: irmago's test-only helpers are in internal/, so they get reimplemented here
+The pieces of irmago that make a headless holder testable — its test signer, and `testkeyshare.StartKeyshareServer` — live under `irmago/internal/`, which the Go toolchain refuses to let another module import. `signer.go` and `keyshare.go` are therefore local reimplementations on top of irmago's *public* packages (`irmaclient.Signer`, `keyshareserver`). Do not "simplify" either into an import of the irmago helper; it does not compile. When irmago's pinned ref moves, these two are where an upstream signature change lands.
+
+### yivi-driver: a keyshare session only asks for a PIN once the token ages out
+irmaclient caches the keyshare server's PIN-authentication JWT and reuses it, treating a token that expires within the next *minute* as already gone (`tokenValid`'s hard-coded leeway). So with a keyshare server configured the way irmago's own tests configure it, back-to-back sessions after enrollment never prompt for a PIN — the PIN branch is simply not reached, and a test asserting it silently passes on the wrong path. `TestKeyshareDisclosureFlow` gets at it by setting the server's pin expiry just above that leeway and waiting the difference out before disclosing. The expiry cannot go *below* the leeway: enrollment validates the token it was just handed, so the holder would reject its own enrollment.
 
 ### stack/business-db: the schema is postguard-business's, not ours
 `business-db` is provisioned from postguard-business's real `drizzle/migrations`

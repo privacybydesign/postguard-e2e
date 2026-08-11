@@ -32,9 +32,16 @@ func (h *chanHandler) UpdateSession(s clientmodels.SessionState) { h.ch <- s }
 // (Appium) backend can implement the same "run this session pointer to
 // completion" contract later.
 type YiviDriver struct {
-	c      *pgclient.Client
-	states chan clientmodels.SessionState
-	nextID int
+	c       *pgclient.Client
+	handler *irmaclient.MockClientHandler
+	states  chan clientmodels.SessionState
+	nextID  int
+
+	// pin is empty until KeyshareEnroll succeeds; a session that asks for a PIN
+	// before that is an error, not something to guess an answer for.
+	pin string
+	// pinRequests counts the PIN prompts answered over this holder's lifetime.
+	pinRequests int
 }
 
 // NewYiviDriver builds a holder. storagePath and eudiPath are (created)
@@ -54,11 +61,12 @@ func NewYiviDriver(storagePath, irmaConfigAssets, eudiPath string) (*YiviDriver,
 		return nil, err
 	}
 
+	handler := irmaclient.NewMockClientHandler()
 	c, err := pgclient.New(
 		storagePath,
 		irmaConfigAssets,
 		eudiPath,
-		irmaclient.NewMockClientHandler(),
+		handler,
 		&chanHandler{ch: states},
 		signer,
 		aesKey,
@@ -69,8 +77,29 @@ func NewYiviDriver(storagePath, irmaConfigAssets, eudiPath string) (*YiviDriver,
 	// DeveloperMode lets the holder talk to a plain-HTTP dev irma-server
 	// (session transports set ForceHTTPS = !DeveloperMode); production stays HTTPS-only.
 	c.SetPreferences(clientsettings.Preferences{DeveloperMode: true})
-	return &YiviDriver{c: c, states: states}, nil
+	return &YiviDriver{c: c, handler: handler, states: states}, nil
 }
+
+// KeyshareEnroll registers the holder with the keyshare server of scheme, which
+// takes over half of its secret key for that scheme's credentials. pin is
+// remembered and used to answer any PIN prompt a later session raises. Blocks
+// until the keyshare server answers.
+func (d *YiviDriver) KeyshareEnroll(scheme irma.SchemeManagerIdentifier, pin string) error {
+	d.c.KeyshareEnroll(scheme, nil, pin, "en")
+	if err := d.handler.AwaitEnrollmentResult(); err != nil {
+		return fmt.Errorf("keyshare enrollment with %s: %w", scheme, err)
+	}
+	d.pin = pin
+	return nil
+}
+
+// PinRequests is how many keyshare PIN prompts this holder has answered.
+//
+// Zero does NOT mean the keyshare server was bypassed: irmaclient reuses a
+// cached PIN authentication, so most sessions are keyshare-backed without
+// prompting. To show a proof was co-computed, count the keyshare server's
+// /prove/* calls instead (localKeyshareServer.ProofRequests).
+func (d *YiviDriver) PinRequests() int { return d.pinRequests }
 
 // aesKeyEnv is the env var used to supply a fixed storage-encryption key so
 // the holder's on-disk state survives restarts. Its value must be 64 hex
@@ -119,9 +148,15 @@ func (d *YiviDriver) RunSession(qr *irma.Qr) error {
 	d.c.NewSession(id, string(j))
 
 	// Per-session error channel so a late grant failure can't leak into a
-	// subsequent RunSession (buffered so a grant that lands after we've already
-	// returned via timeout doesn't block its goroutine).
-	grantErr := make(chan error, 1)
+	// subsequent RunSession. One slot per interaction goroutine we may start
+	// (permission, PIN), so one that fails after we've already returned via
+	// timeout still doesn't block on the send.
+	grantErr := make(chan error, 2)
+
+	// The client re-emits Status_RequestPin after a rejected PIN. We only ever
+	// send the enrolled one, so a second prompt means something is wrong —
+	// bound it instead of resubmitting until the timeout fires.
+	pinPrompts := 0
 
 	for {
 		select {
@@ -130,6 +165,18 @@ func (d *YiviDriver) RunSession(qr *irma.Qr) error {
 				continue
 			}
 			switch st.Status {
+			case clientmodels.Status_RequestPin:
+				if d.pin == "" {
+					return fmt.Errorf("session %d asked for a keyshare PIN but this holder is not enrolled — call KeyshareEnroll first", id)
+				}
+				pinPrompts++
+				if pinPrompts > 1 {
+					return fmt.Errorf("session %d asked for a keyshare PIN again after the enrolled one was submitted", id)
+				}
+				d.pinRequests++
+				// Blocks until the client has processed the PIN, same as the
+				// permission grant below, so keep it off the polling goroutine.
+				go d.enterPin(id, grantErr)
 			case clientmodels.Status_RequestPermission:
 				choices, err := disclosureChoices(st)
 				if err != nil {
@@ -163,6 +210,16 @@ func (d *YiviDriver) grant(id int, choices []clientmodels.DisclosureDisconSelect
 	}); err != nil {
 		// Surface it so RunSession returns the real cause instead of a 30s timeout.
 		grantErr <- fmt.Errorf("granting permission for session %d: %w", id, err)
+	}
+}
+
+func (d *YiviDriver) enterPin(id int, errCh chan<- error) {
+	if err := d.c.HandleUserInteraction(clientmodels.SessionUserInteraction{
+		SessionId: id,
+		Type:      clientmodels.UI_EnteredPin,
+		Payload:   clientmodels.PinInteractionPayload{Pin: d.pin, Proceed: true},
+	}); err != nil {
+		errCh <- fmt.Errorf("entering keyshare PIN for session %d: %w", id, err)
 	}
 }
 
