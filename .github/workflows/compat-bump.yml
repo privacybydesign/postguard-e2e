@@ -54,7 +54,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if git diff --quiet -- compat/manifest.json; then
+          # Every path the bumper writes. `sdk["pg-js"].current` is also what the
+          # corpus job verifies the container corpus with, so the bumper moves
+          # fixtures' pin and lockfile in the same run — a commit limited to the
+          # manifest drops them and reopens the red PR this job exists to avoid
+          # (issue #36).
+          paths=(compat/manifest.json fixtures/package.json fixtures/package-lock.json)
+          if git diff --quiet -- "${paths[@]}"; then
             # Print what the bumper concluded rather than asserting a match. On a
             # registry outage every entry is skipped, the bumper exits 0, and the
             # manifest is unchanged for a reason that is not "already up to date".
@@ -66,8 +72,8 @@ jobs:
           git config user.name  'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git switch -c "$branch"
-          git commit -m 'chore(compat): bump manifest current versions to published latest' \
-            -- compat/manifest.json
+          git commit -m 'chore(compat): bump manifest and the coupled corpus pin to the published latest' \
+            -- "${paths[@]}"
           # Force: the branch survives from the previous run, and this job owns it.
           git push --force origin "$branch"
 
