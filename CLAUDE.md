@@ -36,9 +36,11 @@ read the same set.
 ## Repos to weigh before changing this one
 
 - `encryption4all/postguard` — the root of the family: `pg-core`, the PKG
-  server, and `cryptify/`. `stack/` builds the PKG and cryptify from a sibling
-  checkout of it, unpinned on purpose. Its `COMPATIBILITY.md` is what the
-  sweep's support windows are measured against.
+  server, and `cryptify/`. `stack/` builds the PKG from a sibling checkout of
+  it, unpinned on purpose. Its `COMPATIBILITY.md` is what the sweep's support
+  windows are measured against. Cryptify is the exception: `stack/` builds it
+  from its own `../../cryptify` checkout, a snapshot of a repo that is now
+  archived, so an edit to `postguard/cryptify` does not reach this stack.
 - `encryption4all/postguard-js`, `encryption4all/postguard-dotnet` — the two
   clients the sweep installs from npm and NuGet. A version the support matrix
   declares supported is a promise those repos have to keep.

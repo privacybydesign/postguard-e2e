@@ -25,7 +25,7 @@ const claudeMd = join(repoRoot, 'CLAUDE.md');
 
 // 4,000 B is the gate from dobby-code#482 that decides whether a container
 // working this repo gets its cwd pointed at the checkout. Against an
-// orientation file landing near 3,300 B that is room to add a sibling repo or
+// orientation file landing near 3,500 B that is room to add a sibling repo or
 // reword a paragraph, not room for a second corpus. Raising it is a decision,
 // not a reflex.
 const MAX_BYTES = 4_000;
