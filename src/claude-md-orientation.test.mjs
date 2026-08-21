@@ -16,7 +16,7 @@
 // only reason anything here runs in CI at all.)
 import test from 'node:test';
 import assert from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -33,10 +33,12 @@ const MAX_BYTES = 4_000;
 const body = () => readFileSync(claudeMd, 'utf8');
 
 test('CLAUDE.md stays orientation-sized', () => {
-  // Measured LF-normalised, not from stat(): this repo ships no .gitattributes,
-  // so a CRLF checkout would otherwise spend ~60 B of the budget on line
-  // endings and fail on Windows only.
-  const bytes = Buffer.byteLength(body().replace(/\r\n/g, '\n'), 'utf8');
+  // Raw bytes, because that is what the host gate measures: entrypoint.sh's
+  // choose_cwd runs `wc -c` on the file. Normalising line endings here would
+  // pass a CRLF checkout the host would reject — so `.gitattributes` pins this
+  // file to LF, rather than this gate measuring something softer than the
+  // threshold it cites.
+  const bytes = statSync(claudeMd).size;
   assert.ok(
     bytes <= MAX_BYTES,
     `CLAUDE.md is ${bytes} B, over the ${MAX_BYTES} B cap. This file is ORIENTATION — what this ` +

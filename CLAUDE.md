@@ -1,7 +1,7 @@
 # postguard-e2e
 
-The central end-to-end test harness for PostGuard. Three parts, each with its
-own README:
+The central end-to-end test harness for PostGuard. Three parts — `stack/` and
+`yivi-driver/` have their own README, the sweep is in the root `README.md`:
 
 - `stack/` — a self-contained docker-compose stack (PKG + irma-server +
   cryptify + mailcrab), with the irma-server wired for `irma-demo` issuance so
