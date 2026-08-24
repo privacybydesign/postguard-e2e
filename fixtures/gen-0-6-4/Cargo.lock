@@ -311,6 +311,7 @@ dependencies = [
  "pg-core",
  "rand",
  "rand_chacha",
+ "serde",
  "serde_json",
 ]
 

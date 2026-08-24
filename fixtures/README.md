@@ -55,6 +55,7 @@ postguard's own `wire-compat-rust` gate.
 | `pg-core-0.6.1/` | `pg-core` 0.6.1 (crates.io) | `mem.bin`, `stream.bin`, `mem-privsig.bin`, `stream-privsig.bin` | `gen/`, deterministic |
 | `pg-core-0.5.10/` | `pg-core` 0.5.10 (crates.io) | same four | `gen/`, deterministic |
 | `pg-core-0.6.4/` | `pg-core` 0.6.4 (crates.io) | same four | `gen-0-6-4/`, deterministic |
+| `pg-core-0.6.4-tampered/` | `pg-core` 0.6.4, then edited | `mem.bin`, `stream.bin` and three containers that must be **rejected** | `gen-0-6-4/ --tampered`, deterministic |
 
 0.6.1 and 0.5.10 were the crates.io rows of the machine-read `Reader list` block
 in postguard's `COMPATIBILITY.md` when they were archived — the declared support
@@ -74,6 +75,46 @@ which is the evidence that no derivation moved — so the set pins the `pub_pol`
 half of the 0.6.4 era and not the canonicalization half. The pinned
 `@e4a/pg-wasm` 0.6.1 predates the field and opens these containers anyway —
 postguard#347 says it should, and this set is where that keeps being checked.
+
+### The expected-failure class
+
+`pg-core-0.6.4-tampered/` holds the containers a reader is supposed to
+**refuse**. Each keeps its twin's preamble, header and payload byte
+for byte and replaces only the header signature block, with one made over the
+same header bytes by another signing key carrying that key's policy — the attack
+[postguard#347](https://github.com/encryption4all/postguard/issues/347) is about.
+`pg-core`'s own `swap_header_signature` is the reference implementation.
+
+| Container | Twin | Kind | What it claims |
+|---|---|---|---|
+| `mem-spoofed.bin` | `mem.bin` | `swapped-signer` | `attacker@golden.test`, a different sender entirely |
+| `stream-spoofed.bin` | `stream.bin` | `swapped-signer` | the same, in the segmented container |
+| `mem-respelled.bin` | `mem.bin` | `respelled-sender` | `Sender@Golden.TEST` — the real sender, respelled |
+
+The twins come from the 0.6.4 set because 0.6.4 is the first writer that puts
+the AEAD-protected copy of the sender's policy in the container. A tampered copy
+of an older set could not be caught by *any* reader, ever, since the check is
+guarded on that copy being there.
+
+`mem-respelled.bin` earns its place because the check is byte equality on the
+policy and not identity equality, so a respelling that derives the same sender
+is rejected too — which is what separates a reader that only reads the header
+from one that reads the copy under the AEAD. Public signing only: the swap is on
+the public block, so a `*-privsig` twin would mostly re-pin what the positive
+containers already cover.
+
+A **separate directory**, not three more files in `pg-core-0.6.4/`, because a
+container is only declared by writing it into `meta.json` and every file inside
+a set is frozen the moment it lands. The key material and the two twins are
+byte-identical to the positive set's, so "the tamper differs from its twin only
+in the signature block" is checkable with `cmp`.
+
+`meta.json` records what each container **is** — its kind, its twin, and the
+address it now claims — and never what a reader must do about it: the file is
+frozen forever, and every reader older than the fix decrypts these and recovers
+the plaintext, which is why `plaintextB64` is still there and still checked.
+What each reader *does* is in `readers.mjs`, which is tooling and can move as
+pins do.
 
 Both container modes are covered because they are different wire formats, and
 this is the seam behind
@@ -99,6 +140,7 @@ memory mode and in the encrypted payload trailer in stream mode:
 | `usk.json` | PKG `/v2/irma/key/{ts}` response (recipient's IBE user secret key) |
 | `mpk.json` | PKG `/v2/parameters` response (master public key) |
 | `signkey.json` | PKG `POST /v2/irma/sign/key` response — only in generated sets; it is what lets a future writer seal into an existing key universe |
+| `attacker-signkey.json` | the same response for the identity a tampered container claims — committed so the tamper stays reproducible; only in `pg-core-0.6.4-tampered/` |
 | `meta.json` | schema version, writer, recipient, sender, and one entry per container |
 
 Key material is committed because the e2e stack's IBE keys are ephemeral
@@ -114,25 +156,64 @@ set can never be migrated — editing it is exactly what the rule forbids:
   more than the two classic files.
 - **3** — the same layout as 2, on the sets sealed from `pg-core` 0.6.4 on. The
   version exists so a field can later be added to 3 and a reader that knows only
-  1 and 2 refuses those sets rather than reading past it.
+  1 and 2 refuses those sets rather than reading past it. That field is
+  `tampered`, above: a container carrying it is one the corpus expects a reader
+  to reject.
 
 A verifier that meets a schema it does not know **fails**; it never skips. A
 corpus job that reads nothing and reports success is worse than no job.
 
 ## Verifiers
 
-Three readers, because they answer different questions. All are stack-free.
+Four readers, because they answer different questions. All are stack-free.
 
 | Verifier | Reader | Question |
 |---|---|---|
 | `npm run verify` | `@e4a/pg-wasm`, pinned published | does the JS layer that owns the container format still open the corpus? |
 | `npm run verify` | `@e4a/pg-js`, current | does the SDK websites and add-ons actually ship still open it? |
+| `npm run verify` | `@e4a/pg-wasm` 0.6.4, pinned permanently | did the fix that refuses a swapped sender work in the release that shipped it, and does it still? |
 | [`../fixtures-verify/`](../fixtures-verify/) — `cargo run` | working-tree `pg-core` (sibling `../../postguard` checkout) | is the code about to become the next release still compatible? |
 
 Each checks the recovered plaintext, that the header lists the recipient, the
 verified public sender policy, and that a private signing policy is present
 exactly when the container was sealed with one — a reader that reports claims
 nobody signed is as wrong as one that loses them.
+
+The 0.6.4 pin is permanent and the 0.6.1 pin does not move either. What each
+freezes is different: 0.6.1 is the client half of the archival contract, and
+0.6.4 is *that the fix worked as shipped* — a floating pin there would only
+duplicate `fixtures-verify` and would stop testing 0.6.4 the day 0.6.5 lands.
+It is installed as an npm alias (`pg-wasm-0-6-4`) because `pg-js` declares
+`^0.6.1` and npm dedupes a plain second dependency onto the top-level copy.
+
+On a **tampered** container each reader is held to what `readers.mjs` records
+for it, in the same way `cannotOpen` records a reader's structural limits: a
+reader recorded as rejecting must reject, and one recorded as opening must open
+and report the address the container claims. Four things are asserted together,
+because the error a rejecting reader raises is the one plain corruption raises
+too, so "it threw" would pass on a fixture that is merely broken:
+
+1. the good twin still opens, plaintext and sender verified;
+2. the tampered container's header still parses, and lists the same recipients
+   as the twin;
+3. the identity reported *before* decrypting is the swapped-in one;
+4. only `unseal` fails.
+
+Two readers reject: `@e4a/pg-wasm` 0.6.4 and the working-tree `pg-core`. Two
+record the non-rejection — `@e4a/pg-wasm` 0.6.1 and the current `pg-js` open the
+spoofed containers and report `attacker@golden.test` as the verified sender,
+with the real sender surfacing as a *private* policy. That is the blast radius
+of the bug written down, and it turns a future pin bump into a visible failure
+rather than a silent change. Both also refuse `mem-respelled.bin` outright,
+which is not the tamper check finding anything: they predate canonicalization
+([postguard#335](https://github.com/encryption4all/postguard/issues/335)) and so
+cannot derive the signer identity from a respelled policy at all. That reason is
+recorded beside the refusal, so it is not read as the fix being present.
+
+`verify.test.mjs` is the proof those expectations bite: it copies the corpus,
+puts the good twin in a tampered container's place, and requires every one of
+those cases to go red. A good container passing a negative assertion can only
+mean the assertion was decoration.
 
 **`pg-js` cannot read a memory-mode container**, and that is structural rather
 than a defect: it decrypts through `StreamUnsealer` in both of its input modes,
@@ -163,6 +244,13 @@ cd gen-<pin>                      # the crate that pins the version you want
 cargo run --locked -- <version> ../pg-core-<version>
 cd .. && npm run ledger:write     # appends the new lines; review the diff
 npm run verify && (cd ../fixtures-verify && cargo run)
+```
+
+`gen-0-6-4` also seals the expected-failure set, into a directory of its own:
+
+```sh
+cd gen-0-6-4
+cargo run --locked -- 0.6.4 ../pg-core-0.6.4-tampered --tampered
 ```
 
 One crate per pin, and a new one when the version shares its minor with a pin

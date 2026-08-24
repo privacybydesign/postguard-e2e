@@ -26,13 +26,32 @@ export const REPO_ROOT = dirname(FIXTURES);
  *     more than the two classic files.
  * 3 — layout identical to 2. The bump marks the sets sealed from `pg-core`
  *     0.6.4 on, so a later field can be added to 3 and a verifier that only
- *     knows 1 and 2 refuses those sets instead of reading past the field.
+ *     knows 1 and 2 refuses those sets instead of reading past the field. That
+ *     field now exists: `tampered`, below.
  *
  * A schema outside this list is a failure, never a skip. A set can never be
  * migrated to a newer schema (editing it is what the append-only rule forbids),
  * so every version here stays supported forever.
  */
 export const SUPPORTED_SCHEMA_VERSIONS = [1, 2, 3];
+
+/**
+ * How a container was tampered with, as `meta.json` records it.
+ *
+ * - `swapped-signer` — the header signature block was replaced by one made over
+ *   the same header bytes by a different signing key, carrying that key's
+ *   policy. The container now claims someone else as its sender.
+ * - `respelled-sender` — the same swap, but the policy is the sender's own
+ *   address in another spelling. Canonicalization derives the same identity, so
+ *   the sender's own key signs it and only the policy *bytes* differ — which is
+ *   what the reader's check compares.
+ *
+ * `meta.json` says what a container **is** and never what a reader must do
+ * about it: the file is frozen forever, and a reader that predates
+ * postguard#347 opens these and recovers the plaintext. Which readers reject
+ * which kind lives in `readers.mjs`, which is tooling and can move.
+ */
+export const TAMPER_KINDS = ['swapped-signer', 'respelled-sender'];
 
 /**
  * Directories directly under `fixtures/` that are tooling, not a fixture set.
@@ -66,6 +85,7 @@ const TOOLING_FILES = new Set([
   'ledger.mjs',
   'readers.mjs',
   'verify.mjs',
+  'verify.test.mjs',
   'package.json',
   'package-lock.json',
 ]);
@@ -167,6 +187,29 @@ export function loadSet(name) {
     }
     if (container.mode !== 'memory' && container.mode !== 'stream') {
       throw new Error(`${name}/${container.file}: unknown container mode ${container.mode}`);
+    }
+    if (container.tampered) {
+      const { kind, swappedFrom, attackerEmail } = container.tampered;
+      if (!TAMPER_KINDS.includes(kind)) {
+        throw new Error(
+          `${name}/${container.file}: unknown tamper kind ${kind} (know ${TAMPER_KINDS.join(', ')})`
+        );
+      }
+      // The twin has to be in the same set: every assertion about a tampered
+      // container is made against it, so a set that cannot resolve it declares
+      // a negative case nothing can check.
+      if (!declared.some((c) => c.file === swappedFrom)) {
+        throw new Error(
+          `${name}/${container.file}: tampered.swappedFrom names ${swappedFrom}, which this set ` +
+            'does not declare'
+        );
+      }
+      if (!attackerEmail) {
+        throw new Error(
+          `${name}/${container.file}: tampered with no attackerEmail — nothing to compare the ` +
+            'identity the container now claims against'
+        );
+      }
     }
     return {
       ...container,

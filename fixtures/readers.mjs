@@ -1,7 +1,7 @@
 //! The JS readers the corpus is verified with, and what each of them is
 //! allowed not to be able to do.
 //!
-//! Two readers, because they answer different questions:
+//! Three readers, because they answer different questions:
 //!
 //! - **`@e4a/pg-wasm`, pinned published** — the layer that owns the container
 //!   format on the JS side, and the only JS reader that opens a memory-mode
@@ -15,6 +15,14 @@
 //!   the sender identity handed to the UI. This is the reader whose regression
 //!   would orphan mail in the field, so the corpus is checked against the
 //!   *current* one and not a pin that quietly ages out of relevance.
+//! - **`@e4a/pg-wasm` 0.6.4, pinned permanently** — the first release that
+//!   rejects a swapped header-signature block
+//!   ([postguard#347](https://github.com/encryption4all/postguard/issues/347)).
+//!   What this pin freezes is *that the fix worked as shipped*: a floating pin
+//!   would only duplicate `fixtures-verify` and would stop testing 0.6.4 the
+//!   day 0.6.5 lands. It is an npm alias rather than a second dependency
+//!   because `pg-js` declares `^0.6.1` and npm dedupes a plain second entry
+//!   onto the top-level copy.
 //!
 //! `pg-js` cannot read a memory-mode container, and that is a structural
 //! property rather than a defect: it decrypts through `StreamUnsealer` in both
@@ -23,6 +31,13 @@
 //! the refusal, by exact message. A memory container that fails for any *other*
 //! reason is a wire break, and a `pg-js` that suddenly opens one is a change in
 //! the support story that has to be recorded here rather than passing quietly.
+//!
+//! `rejectsTampered` is the same idea for the expected-failure containers. The
+//! corpus carries containers whose header signature block was replaced
+//! (`corpus.mjs`, `TAMPER_KINDS`); a reader older than the fix opens them and
+//! reports the identity they claim. That non-rejection is the blast radius
+//! written down: recorded here, it holds the reader to what it does today and
+//! turns a pin bump into a visible failure rather than a silent change.
 
 import { readFileSync } from 'node:fs';
 import { readFile as readFileAsync } from 'node:fs/promises';
@@ -34,6 +49,28 @@ import { REPO_ROOT } from './corpus.mjs';
 
 /** The refusal `pg-js` answers a memory-mode container with. */
 export const PG_JS_MEMORY_REFUSAL = /mode is not supported: InMemory/;
+
+/** The package both wasm readers are, whichever specifier resolves them. */
+const PG_WASM_PACKAGE = '@e4a/pg-wasm';
+
+/**
+ * Why the two pre-fix readers refuse a `respelled-sender` container outright,
+ * which is *not* the tamper check finding anything.
+ *
+ * Canonicalization landed in the same release as the fix
+ * ([postguard#335](https://github.com/encryption4all/postguard/issues/335)), so
+ * a reader older than it derives the signer's identity from the policy bytes as
+ * they stand. A respelled policy derives an identity the header signature was
+ * never made for, so the signature does not verify and the container is refused
+ * before any payload is read.
+ */
+const RESPELL_REFUSED_AT_HEADER = {
+  stage: 'header',
+  why:
+    'this reader predates canonicalization (postguard#335): it derives the signer identity from ' +
+    'the policy bytes as they stand, so the header signature over a respelled policy does not ' +
+    'verify and the container is refused before the payload is read',
+};
 
 /**
  * The `@e4a/pg-js` version the corpus is verified with. Read from
@@ -75,58 +112,131 @@ function installedVersion(specifier, name) {
   throw new Error(`cannot find the installed package.json of ${name} from ${specifier}`);
 }
 
-const pgWasm = {
+/**
+ * A reader over one installed copy of `@e4a/pg-wasm`. Two of them are in the
+ * list and they differ only in which copy and what each is held to, so the
+ * container plumbing is written once — a second hand-written copy would drift
+ * from this one on the first fix to either.
+ */
+function pgWasmReader({ id, label, specifier, expectVersion, rejectsTampered }) {
+  return {
+    id,
+    label,
+    cannotOpen: {},
+    rejectsTampered,
+
+    async load() {
+      // The package's default entry is the bundler target, which does
+      // `import * as wasm from "./index_bg.wasm"` — plain Node cannot resolve
+      // that. The web target takes the module bytes as an argument instead. The
+      // .wasm file is not in the package's `exports`, so resolve the glue and
+      // read its sibling rather than resolving the wasm directly.
+      const glue = `${specifier}/web`;
+      const module = await import(glue);
+      await module.default({
+        module_or_path: await readFileAsync(new URL('index_bg.wasm', import.meta.resolve(glue))),
+      });
+
+      const version = installedVersion(glue, PG_WASM_PACKAGE);
+      if (expectVersion && version !== expectVersion) {
+        throw new Error(
+          `${id} resolved ${PG_WASM_PACKAGE} ${version}, not the ${expectVersion} it is pinned ` +
+            'to — this reader exists to hold one published release to what it did, so a copy ' +
+            'npm deduped onto another version verifies nothing. Check the specifier in ' +
+            'fixtures/package.json and its lockfile.'
+        );
+      }
+      return { module, version };
+    },
+
+    /**
+     * Parse the header and read the sender identity it *claims*, without
+     * decrypting. `public_identity()` has to be called before `unseal()`,
+     * which consumes the unsealer.
+     */
+    async inspect({ module }, { set, container }) {
+      const unsealer = await newUnsealer(module, set, container);
+      return {
+        recipients: [...unsealer.inspect_header().keys()],
+        identity: unsealer.public_identity(),
+      };
+    },
+
+    async open({ module }, { set, container }) {
+      const { usk, meta } = set;
+      const unsealer = await newUnsealer(module, set, container);
+      const recipients = [...unsealer.inspect_header().keys()];
+
+      if (container.mode === 'memory') {
+        // `unseal()` takes ownership of the unsealer: the generated glue hands
+        // the pointer to wasm and nulls it on the way in, so a tidy free()
+        // afterwards is a double free reported as `null pointer passed to rust`
+        // — which reads exactly like a broken container. Nothing here frees.
+        const [plaintext, identity] = await unsealer.unseal(meta.recipientId, usk);
+        return { plaintext: Buffer.from(plaintext), identity, recipients };
+      }
+
+      const chunks = [];
+      const writable = new WritableStream({
+        write(chunk) {
+          chunks.push(Buffer.from(chunk));
+        },
+      });
+      const identity = await unsealer.unseal(meta.recipientId, usk, writable);
+      return { plaintext: Buffer.concat(chunks), identity, recipients };
+    },
+  };
+}
+
+/** A fresh unsealer over one container, in whichever mode it was sealed. */
+async function newUnsealer(module, set, container) {
+  const ciphertext = new Uint8Array(await readFileAsync(join(set.dir, container.file)));
+  if (container.mode === 'memory') {
+    return module.Unsealer.new(ciphertext, set.verifyingKey);
+  }
+  const readable = new ReadableStream({
+    start(controller) {
+      controller.enqueue(ciphertext);
+      controller.close();
+    },
+  });
+  return module.StreamUnsealer.new(readable, set.verifyingKey);
+}
+
+const pgWasm = pgWasmReader({
   id: 'pg-wasm',
   label: '@e4a/pg-wasm (pinned published)',
-  cannotOpen: {},
-
-  async load() {
-    // The package's default entry is the bundler target, which does
-    // `import * as wasm from "./index_bg.wasm"` — plain Node cannot resolve
-    // that. The web target takes the module bytes as an argument instead. The
-    // .wasm file is not in the package's `exports`, so resolve the glue and
-    // read its sibling rather than resolving the wasm directly.
-    const glue = '@e4a/pg-wasm/web';
-    const module = await import(glue);
-    await module.default({
-      module_or_path: await readFileAsync(new URL('index_bg.wasm', import.meta.resolve(glue))),
-    });
-    return { module, version: installedVersion(glue, '@e4a/pg-wasm') };
+  specifier: PG_WASM_PACKAGE,
+  rejectsTampered: {
+    // A swapped header signature block is not rejected here, and must not be:
+    // this pin predates postguard#347, so it opens those containers and reports
+    // the sender they claim. That is the recorded blast radius of the bug.
+    'respelled-sender': RESPELL_REFUSED_AT_HEADER,
   },
+});
 
-  async open({ module }, { set, container }) {
-    const ciphertext = new Uint8Array(await readFileAsync(join(set.dir, container.file)));
-    const { verifyingKey, usk, meta } = set;
-
-    if (container.mode === 'memory') {
-      const unsealer = await module.Unsealer.new(ciphertext, verifyingKey);
-      const recipients = [...unsealer.inspect_header().keys()];
-      // `unseal()` takes ownership of the unsealer: the generated glue hands
-      // the pointer to wasm and nulls it on the way in, so a tidy free()
-      // afterwards is a double free reported as `null pointer passed to rust`
-      // — which reads exactly like a broken container. Nothing here frees.
-      const [plaintext, identity] = await unsealer.unseal(meta.recipientId, usk);
-      return { plaintext: Buffer.from(plaintext), identity, recipients };
-    }
-
-    const readable = new ReadableStream({
-      start(controller) {
-        controller.enqueue(ciphertext);
-        controller.close();
-      },
-    });
-    const chunks = [];
-    const writable = new WritableStream({
-      write(chunk) {
-        chunks.push(Buffer.from(chunk));
-      },
-    });
-    const unsealer = await module.StreamUnsealer.new(readable, verifyingKey);
-    const recipients = [...unsealer.inspect_header().keys()];
-    const identity = await unsealer.unseal(meta.recipientId, usk, writable);
-    return { plaintext: Buffer.concat(chunks), identity, recipients };
+const pgWasm064 = pgWasmReader({
+  id: 'pg-wasm-0-6-4',
+  label: '@e4a/pg-wasm 0.6.4 (pinned permanently)',
+  specifier: 'pg-wasm-0-6-4',
+  expectVersion: '0.6.4',
+  rejectsTampered: {
+    'swapped-signer': {
+      stage: 'unseal',
+      why:
+        'the AEAD-protected copy of the sender\'s public signing policy names the real sender ' +
+        'and the header signature block names someone else (postguard#347), so the header still ' +
+        'parses and unseal is where it stops',
+    },
+    'respelled-sender': {
+      stage: 'unseal',
+      why:
+        'the check is byte equality on the policy and not identity equality, so a respelling ' +
+        'that derives the same sender is rejected too — which is what separates a reader that ' +
+        'only reads the header from one that reads the copy under the AEAD',
+    },
   },
-};
+});
 
 const pgJs = {
   id: 'pg-js',
@@ -135,6 +245,13 @@ const pgJs = {
     memory:
       'pg-js decrypts through StreamUnsealer in both input modes, so it neither reads nor ' +
       'writes a memory-mode container; @e4a/pg-wasm covers those cases',
+  },
+  // Whichever `@e4a/pg-wasm` the current pg-js resolves onto does the container
+  // work, so this reader inherits that copy's answers. The refusal below
+  // arrives ahead of the memory-mode one, because the header signature is
+  // checked before the mode is.
+  rejectsTampered: {
+    'respelled-sender': RESPELL_REFUSED_AT_HEADER,
   },
 
   async load({ set }) {
@@ -156,14 +273,19 @@ const pgJs = {
     await pkg?.close();
   },
 
-  async open({ PostGuard, pkg }, { set, container }) {
-    const data = new Uint8Array(await readFileAsync(join(set.dir, container.file)));
-    const postguard = new PostGuard({ pkgUrl: pkg.url });
-    const opened = postguard.open({ data });
+  /**
+   * `inspect()` before `decrypt()` is the documented consumer pattern (show the
+   * recipient list, then decrypt for one of them) and it is the SDK call that
+   * reads the multi-recipient header on its own. Its `sender` is the identity
+   * the header *claims*, which is the pre-decrypt reading a UI would show.
+   */
+  async inspect({ PostGuard, pkg }, { set, container }) {
+    const { recipients, sender } = await openLazily(PostGuard, pkg, set, container).inspect();
+    return { recipients, identity: sender?.raw ?? null };
+  },
 
-    // inspect() before decrypt() is the documented consumer pattern (show the
-    // recipient list, then decrypt for one of them) and it is the SDK call that
-    // reads the multi-recipient header on its own.
+  async open({ PostGuard, pkg }, { set, container }) {
+    const opened = openLazily(PostGuard, pkg, set, container);
     const { recipients } = await opened.inspect();
 
     // Where a browser consumer scans a QR code, the corpus passes a session
@@ -177,7 +299,13 @@ const pgJs = {
   },
 };
 
-export const READERS = [pgWasm, pgJs];
+/** The SDK's lazy builder over one container's bytes. */
+function openLazily(PostGuard, pkg, set, container) {
+  const data = readFileSync(join(set.dir, container.file));
+  return new PostGuard({ pkgUrl: pkg.url }).open({ data: new Uint8Array(data) });
+}
+
+export const READERS = [pgWasm, pgJs, pgWasm064];
 
 export function readerById(id) {
   const reader = READERS.find((r) => r.id === id);

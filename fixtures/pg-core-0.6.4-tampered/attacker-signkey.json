@@ -1,0 +1,14 @@
+{
+  "pubSignKey": {
+    "key": "C71IaQkkAntT9cU7ye3T7FArQXu8Ao6t2VOWQVPVSQwE/pc4/nw4CWphHnoveU3fJyxkwCBFTAgzOE0APA7AeL3dGlD2Yv3vK3Np3IsYryj4VLbG1s8FgzkFf2iysNGO",
+    "policy": {
+      "con": [
+        {
+          "t": "pbdf.sidn-pbdf.email.email",
+          "v": "attacker@golden.test"
+        }
+      ],
+      "ts": 1704067200
+    }
+  }
+}

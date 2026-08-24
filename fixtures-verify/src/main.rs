@@ -17,6 +17,12 @@
 //! cargo run -- --case <set-dir> <container>  # one container, in this process
 //! ```
 //!
+//! Some containers in the corpus are **expected to fail**: their header
+//! signature block was replaced by one another signing key made over the same
+//! header bytes. The current `pg-core` has to reject every one of them, and
+//! [`check_tampered`] says what "reject" is allowed to mean — an error alone is
+//! not enough, because a container that is merely broken raises the same one.
+//!
 //! The driver runs each container in a **child process**, which is not
 //! tidiness. A reader handed a container whose header layout it no longer
 //! agrees with does not always return an error: it can read a garbage length
@@ -50,6 +56,9 @@ use serde::Deserialize;
 /// 1 and 2 refuses those sets instead of reading past the field.
 const SUPPORTED_SCHEMA_VERSIONS: &[u32] = &[1, 2, 3];
 
+/// The attribute type every set's sender identity is expressed in.
+const SENDER_ATTR_TYPE: &str = "pbdf.sidn-pbdf.email.email";
+
 /// Directories under `fixtures/` that are tooling rather than a fixture set.
 /// One generator crate per pinned writer — see `../fixtures/gen-0-6-4/Cargo.toml`.
 const NOT_A_SET: &[&str] = &["node_modules", "gen", "gen-0-6-4"];
@@ -82,6 +91,26 @@ struct Container {
     private_signing: bool,
     #[serde(default)]
     plaintext_b64: Option<String>,
+    /// Present on a container the corpus expects a reader to reject. Schema 3
+    /// was bumped so a field could be added to it; this is that field.
+    #[serde(default)]
+    tampered: Option<Tamper>,
+}
+
+/// What was done to a tampered container. `meta.json` says what the container
+/// *is* and never what a reader must do about it — the file is frozen forever,
+/// and every reader older than postguard#347 opens these and recovers the
+/// plaintext. What the *current* `pg-core` must do about it is this binary's
+/// business, and it is not negotiable: reject.
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct Tamper {
+    kind: String,
+    /// The container this one is byte-for-byte identical to outside its header
+    /// signature block. Every assertion below is made against it.
+    swapped_from: String,
+    /// The sender address the replacement block claims.
+    attacker_email: String,
 }
 
 #[derive(Deserialize)]
@@ -128,6 +157,7 @@ impl Meta {
                     mode: mode.to_string(),
                     private_signing: false,
                     plaintext_b64: None,
+                    tampered: None,
                 })
                 .collect()
         })
@@ -149,10 +179,92 @@ impl Meta {
     }
 }
 
-/// Opens one container and checks everything the corpus promises about it:
-/// the recovered plaintext, the verified public sender policy, and whether a
-/// private signing policy is present exactly when the container was sealed
-/// with one.
+/// The two PKG artifacts every set commits, which is everything needed to open
+/// its containers.
+struct Keys {
+    vk: VerifyingKey,
+    usk: UserSecretKey<CGWKV>,
+}
+
+impl Keys {
+    fn read(dir: &Path) -> Result<Keys, String> {
+        let read = |name: &str| fs::read(dir.join(name)).map_err(|e| format!("read {name}: {e}"));
+        let vk: Parameters<VerifyingKey> =
+            serde_json::from_slice(&read("vk.json")?).map_err(|e| format!("parse vk.json: {e}"))?;
+        let usk: UskResponse = serde_json::from_slice(&read("usk.json")?)
+            .map_err(|e| format!("parse usk.json: {e}"))?;
+        Ok(Keys {
+            vk: vk.public_key,
+            usk: usk.key,
+        })
+    }
+}
+
+/// Parses the header and reads the recipients it lists and the sender identity
+/// it *claims*, without decrypting: `Unsealer::unseal` consumes the unsealer,
+/// so `pub_id` has to be read from one of its own.
+fn inspect(ct: &[u8], mode: &str, vk: &VerifyingKey) -> Result<(Vec<String>, Policy), String> {
+    match mode {
+        "memory" => {
+            let unsealer = Unsealer::<Vec<u8>, UnsealerMemoryConfig>::new(ct, vk)
+                .map_err(|e| format!("parse header: {e:?}"))?;
+            Ok((
+                unsealer.header.recipients.keys().cloned().collect(),
+                unsealer.pub_id,
+            ))
+        }
+        "stream" => futures::executor::block_on(async {
+            let mut reader = futures::io::Cursor::new(ct);
+            let unsealer = Unsealer::<_, UnsealerStreamConfig>::new(&mut reader, vk)
+                .await
+                .map_err(|e| format!("parse header: {e:?}"))?;
+            Ok((
+                unsealer.header.recipients.keys().cloned().collect(),
+                unsealer.pub_id,
+            ))
+        }),
+        other => Err(format!("unknown container mode {other}")),
+    }
+}
+
+/// Decrypts and verifies one container. The `unseal:` prefix is load-bearing:
+/// [`check_tampered`] uses it to tell a rejection at the payload from one at
+/// the header.
+fn unseal(
+    ct: &[u8],
+    mode: &str,
+    ident: &str,
+    keys: &Keys,
+) -> Result<(Vec<u8>, VerificationResult), String> {
+    match mode {
+        "memory" => {
+            let unsealer = Unsealer::<Vec<u8>, UnsealerMemoryConfig>::new(ct, &keys.vk)
+                .map_err(|e| format!("parse header: {e:?}"))?;
+            unsealer
+                .unseal(ident, &keys.usk)
+                .map_err(|e| format!("unseal: {e:?}"))
+        }
+        "stream" => {
+            let mut reader = futures::io::Cursor::new(ct);
+            let mut plain = Vec::new();
+            let verified = futures::executor::block_on(async {
+                let unsealer = Unsealer::<_, UnsealerStreamConfig>::new(&mut reader, &keys.vk)
+                    .await
+                    .map_err(|e| format!("parse header: {e:?}"))?;
+                unsealer
+                    .unseal(ident, &keys.usk, &mut plain)
+                    .await
+                    .map_err(|e| format!("unseal: {e:?}"))
+            })?;
+            Ok((plain, verified))
+        }
+        other => Err(format!("unknown container mode {other}")),
+    }
+}
+
+/// Opens one container and checks everything the corpus promises about it —
+/// or, for a tampered one, that it is refused. See [`check_positive`] and
+/// [`check_tampered`].
 fn open_case(dir: &Path, file: &str) -> Result<(), String> {
     let meta = Meta::parse(dir)?;
     let container = meta
@@ -160,40 +272,27 @@ fn open_case(dir: &Path, file: &str) -> Result<(), String> {
         .into_iter()
         .find(|c| c.file == file)
         .ok_or_else(|| format!("meta.json declares no container {file}"))?;
+    let keys = Keys::read(dir)?;
 
-    let read = |name: &str| fs::read(dir.join(name)).map_err(|e| format!("read {name}: {e}"));
-    let vk: Parameters<VerifyingKey> =
-        serde_json::from_slice(&read("vk.json")?).map_err(|e| format!("parse vk.json: {e}"))?;
-    let usk: UskResponse =
-        serde_json::from_slice(&read("usk.json")?).map_err(|e| format!("parse usk.json: {e}"))?;
-    let want = meta.plaintext(&container)?;
-    let ct = read(file)?;
+    match container.tampered.clone() {
+        None => check_positive(dir, &meta, &container, &keys),
+        Some(tamper) => check_tampered(dir, &meta, &container, &tamper, &keys),
+    }
+}
 
-    let (plain, verified) = match container.mode.as_str() {
-        "memory" => {
-            let unsealer = Unsealer::<Vec<u8>, UnsealerMemoryConfig>::new(&ct, &vk.public_key)
-                .map_err(|e| format!("parse header: {e:?}"))?;
-            unsealer
-                .unseal(&meta.recipient_id, &usk.key)
-                .map_err(|e| format!("unseal: {e:?}"))?
-        }
-        "stream" => {
-            let mut reader = futures::io::Cursor::new(&ct);
-            let mut plain = Vec::new();
-            let verified = futures::executor::block_on(async {
-                let unsealer =
-                    Unsealer::<_, UnsealerStreamConfig>::new(&mut reader, &vk.public_key)
-                        .await
-                        .map_err(|e| format!("parse header: {e:?}"))?;
-                unsealer
-                    .unseal(&meta.recipient_id, &usk.key, &mut plain)
-                    .await
-                    .map_err(|e| format!("unseal: {e:?}"))
-            })?;
-            (plain, verified)
-        }
-        other => return Err(format!("unknown container mode {other}")),
-    };
+/// The recovered plaintext, the verified public sender policy, and whether a
+/// private signing policy is present exactly when the container was sealed with
+/// one.
+fn check_positive(
+    dir: &Path,
+    meta: &Meta,
+    container: &Container,
+    keys: &Keys,
+) -> Result<(), String> {
+    let ct =
+        fs::read(dir.join(&container.file)).map_err(|e| format!("read {}: {e}", container.file))?;
+    let want = meta.plaintext(container)?;
+    let (plain, verified) = unseal(&ct, &container.mode, &meta.recipient_id, keys)?;
 
     if plain != want {
         return Err(format!(
@@ -202,8 +301,86 @@ fn open_case(dir: &Path, file: &str) -> Result<(), String> {
             want.len()
         ));
     }
-    check_signatures(&verified, &meta, &container)?;
-    Ok(())
+    check_signatures(&verified, meta, container)
+}
+
+/// A container whose header signature block was replaced. Four things are
+/// asserted together, because `Error::IncorrectSignature` is what plain
+/// corruption raises too — postguard#347 reuses it deliberately, a new variant
+/// on a public enum with no `#[non_exhaustive]` being a major — so "it returned
+/// an error" would pass just as happily on a fixture that is merely broken:
+///
+/// 1. the good twin still opens, plaintext and sender verified;
+/// 2. the tampered container's header still parses, and lists the same
+///    recipients as the twin;
+/// 3. `pub_id` — what the container claims before anything is decrypted — is
+///    the swapped-in sender and not the real one;
+/// 4. only `unseal` fails.
+fn check_tampered(
+    dir: &Path,
+    meta: &Meta,
+    container: &Container,
+    tamper: &Tamper,
+    keys: &Keys,
+) -> Result<(), String> {
+    let twin = meta
+        .containers()
+        .into_iter()
+        .find(|c| c.file == tamper.swapped_from)
+        .ok_or_else(|| {
+            format!(
+                "meta.json declares no container {}, so there is nothing to compare this tamper \
+                 against",
+                tamper.swapped_from
+            )
+        })?;
+    check_positive(dir, meta, &twin, keys)
+        .map_err(|e| format!("the good twin {} must still open: {e}", twin.file))?;
+
+    let twin_ct = fs::read(dir.join(&twin.file)).map_err(|e| format!("read {}: {e}", twin.file))?;
+    let (twin_recipients, _) = inspect(&twin_ct, &twin.mode, &keys.vk)?;
+
+    let ct =
+        fs::read(dir.join(&container.file)).map_err(|e| format!("read {}: {e}", container.file))?;
+    let (recipients, claimed) = inspect(&ct, &container.mode, &keys.vk)
+        .map_err(|e| format!("the tampered container's header must still parse: {e}"))?;
+
+    if recipients != twin_recipients {
+        return Err(format!(
+            "header recipients {recipients:?} differ from the twin {}'s {twin_recipients:?} — \
+             the tamper is supposed to leave the header alone",
+            twin.file
+        ));
+    }
+    if !has_attribute(&claimed, SENDER_ATTR_TYPE, &tamper.attacker_email) {
+        return Err(format!(
+            "the header should already claim {}: {:?}",
+            tamper.attacker_email, claimed.con
+        ));
+    }
+    if has_attribute(&claimed, SENDER_ATTR_TYPE, &meta.sender_email) {
+        return Err(format!(
+            "the header still claims the real sender {} — this container is not the tamper \
+             meta.json says it is",
+            meta.sender_email
+        ));
+    }
+
+    match unseal(&ct, &container.mode, &meta.recipient_id, keys) {
+        Err(e) if e.starts_with("unseal:") => Ok(()),
+        Err(e) => Err(format!(
+            "expected the tampered container to be rejected while unsealing, and the header \
+             parsed a moment ago, but: {e}"
+        )),
+        Ok((plain, verified)) => Err(format!(
+            "the current pg-core opened a {} container and reported {:?} as its VERIFIED sender \
+             over {} recovered bytes — a swapped header signature block is being handed to a \
+             user as authentic (postguard#347)",
+            tamper.kind,
+            verified.public.con,
+            plain.len()
+        )),
+    }
 }
 
 fn check_signatures(
@@ -211,11 +388,7 @@ fn check_signatures(
     meta: &Meta,
     container: &Container,
 ) -> Result<(), String> {
-    if !has_attribute(
-        &verified.public,
-        "pbdf.sidn-pbdf.email.email",
-        &meta.sender_email,
-    ) {
+    if !has_attribute(&verified.public, SENDER_ATTR_TYPE, &meta.sender_email) {
         return Err(format!(
             "verified public sender policy does not carry email={}: {:?}",
             meta.sender_email, verified.public.con
@@ -297,7 +470,10 @@ fn run_case(exe: &Path, dir: &Path, file: &str) -> Result<(), String> {
     })
 }
 
-fn drive(fixtures: &Path) -> Result<(usize, usize), String> {
+/// Returns the number of sets read, containers opened, and tampered containers
+/// refused. The two container counts are kept apart because a run that opened
+/// everything would be a *failure* of the second kind.
+fn drive(fixtures: &Path) -> Result<(usize, usize, usize), String> {
     let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
     let mut dirs: Vec<PathBuf> = fs::read_dir(fixtures)
         .map_err(|e| format!("cannot read {}: {e}", fixtures.display()))?
@@ -312,7 +488,8 @@ fn drive(fixtures: &Path) -> Result<(usize, usize), String> {
     dirs.sort();
 
     let mut sets = 0;
-    let mut containers = 0;
+    let mut opened = 0;
+    let mut refused = 0;
     let mut failures = Vec::new();
 
     for dir in &dirs {
@@ -335,10 +512,19 @@ fn drive(fixtures: &Path) -> Result<(usize, usize), String> {
         }
         for container in &declared {
             match run_case(&exe, dir, &container.file) {
-                Ok(()) => {
-                    println!("ok    {name}/{} ({})", container.file, container.mode);
-                    containers += 1;
-                }
+                Ok(()) => match &container.tampered {
+                    None => {
+                        println!("ok    {name}/{} ({})", container.file, container.mode);
+                        opened += 1;
+                    }
+                    Some(tamper) => {
+                        println!(
+                            "ok    {name}/{} ({}, {}) refused",
+                            container.file, container.mode, tamper.kind
+                        );
+                        refused += 1;
+                    }
+                },
                 Err(e) => failures.push(format!("{name}/{}: {e}", container.file)),
             }
         }
@@ -355,11 +541,12 @@ fn drive(fixtures: &Path) -> Result<(usize, usize), String> {
             eprintln!("FAIL  {failure}");
         }
         return Err(format!(
-            "{} container(s) in the corpus no longer open with the current pg-core",
+            "{} case(s) failed: a container the corpus says must open no longer does, or one it \
+             says must be refused was accepted",
             failures.len()
         ));
     }
-    Ok((sets, containers))
+    Ok((sets, opened, refused))
 }
 
 /// Minimal std-only base64 (standard alphabet, padded) so the verifier adds no
@@ -412,17 +599,17 @@ fn main() -> ExitCode {
     }
 
     match drive(&fixtures) {
-        Ok((0, _)) | Ok((_, 0)) => {
+        Ok((0, _, _)) | Ok((_, 0, _)) => {
             eprintln!(
                 "no fixture sets found in {} — that itself is a failure",
                 fixtures.display()
             );
             ExitCode::FAILURE
         }
-        Ok((sets, containers)) => {
+        Ok((sets, opened, refused)) => {
             println!(
-                "\nOK: {containers} container(s) across {sets} fixture set(s) still open with the \
-                 current pg-core"
+                "\nOK: across {sets} fixture set(s), {opened} container(s) still open with the \
+                 current pg-core and {refused} tampered one(s) are refused"
             );
             ExitCode::SUCCESS
         }

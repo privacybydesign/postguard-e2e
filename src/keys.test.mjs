@@ -15,6 +15,10 @@ test('the sealable universes are the committed sets that carry signing keys', ()
   // The set generated from the live stack has no signkey.json — nothing can
   // sign as its sender any more — so it must not be offered as sealable.
   assert.ok(!names.includes('pg-wasm-0.6.1'), names.join(', '));
+  // Nor is the expected-failure set, whose key universe is the positive 0.6.4
+  // set's byte for byte. Without this it would be the DEFAULT pick: it sorts
+  // last among the sets sealed by the newest writer.
+  assert.ok(!names.includes('pg-core-0.6.4-tampered'), names.join(', '));
 });
 
 test('the default universe is sealable and carries everything a seal needs', () => {

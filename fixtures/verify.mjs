@@ -13,6 +13,12 @@
 //! JS reader, by the SDK the ecosystem currently ships, and by the code about
 //! to become the next release.
 //!
+//! Some containers in the corpus are **expected to fail**: their header
+//! signature block was replaced, and a reader that reports their claimed sender
+//! as verified is the bug postguard#347 fixed. `meta.json` records what such a
+//! container is; `readers.mjs` records what each reader does about it. See
+//! `runTamperedCase` for what is asserted, and why "it threw" is not enough.
+//!
 //! Each case runs in a **child process**. A reader handed a container whose
 //! header layout it no longer agrees with does not reliably throw: it can read
 //! a garbage length prefix and abort on the allocation, which in wasm arrives
@@ -28,46 +34,183 @@ import { readerById, READERS } from './readers.mjs';
 
 const SELF = fileURLToPath(import.meta.url);
 
+/** The attribute type every set's sender identity is expressed in. */
+const SENDER_ATTR_TYPE = 'pbdf.sidn-pbdf.email.email';
+
+/** Does this policy carry the sender attribute with exactly this value? */
+function claims(policy, email) {
+  return (policy?.con ?? []).some((a) => a.t === SENDER_ATTR_TYPE && a.v === email);
+}
+
 /** Runs one case in this process and throws with a precise message. */
 async function runCase(readerId, setName, containerFile) {
   const reader = readerById(readerId);
   const set = loadSet(setName);
   const container = findContainer(set, containerFile);
-  const refusal = reader.cannotOpen[container.mode];
 
   let state;
   try {
     state = await reader.load({ set });
+    return container.tampered
+      ? await runTamperedCase(reader, state, set, container)
+      : await runPositiveCase(reader, state, set, container);
+  } finally {
+    await reader.unload?.(state ?? {});
+  }
+}
 
+/** A container the corpus expects this reader to open. */
+async function runPositiveCase(reader, state, set, container) {
+  const refusal = reader.cannotOpen[container.mode];
+  if (refusal) return expectModeRefusal(reader, state, set, container, refusal);
+
+  check(await reader.open(state, { set, container }), set, container);
+  return `${container.mode} container opened, plaintext and sender verified`;
+}
+
+/**
+ * A container whose header signature block was replaced. Four things are
+ * asserted together, because the error a rejecting reader raises
+ * (`IncorrectSignature`) is the one plain corruption raises too — postguard#347
+ * reuses it deliberately, a new variant on a public enum with no
+ * `#[non_exhaustive]` being a major — so "it threw" would pass just as happily
+ * on a fixture that is merely broken:
+ *
+ *  1. the **good twin** still opens, plaintext and sender verified;
+ *  2. the tampered container's header still **parses**, and lists the same
+ *     recipients as the twin;
+ *  3. the identity reported **before** decrypting is the one the swapped block
+ *     claims, and not the real sender's;
+ *  4. only `unseal` fails.
+ *
+ * For a reader recorded as unable to reject, the mirror of 4: it opens, hands
+ * back the recorded plaintext, and reports the claim. That is the blast radius
+ * of the bug, written down and held in place.
+ */
+async function runTamperedCase(reader, state, set, container) {
+  const { kind, swappedFrom, attackerEmail } = container.tampered;
+  const rejection = reader.rejectsTampered?.[kind];
+
+  // Recorded as refusing before it reads the payload at all: there is nothing
+  // after that to assert, so assert the refusal and stop.
+  if (rejection?.stage === 'header') {
+    try {
+      await reader.inspect(state, { set, container });
+    } catch (e) {
+      return `refused a ${kind} container at the header as recorded: ${e.message}`;
+    }
+    throw new Error(
+      `this reader is recorded as refusing a ${kind} container at the header (${rejection.why}) ` +
+        'but it just parsed one — move the rejectsTampered entry in readers.mjs to the stage it ' +
+        'fails at now, or drop it'
+    );
+  }
+  if (rejection && rejection.stage !== 'unseal') {
+    throw new Error(
+      `readers.mjs records rejectsTampered['${kind}'].stage = ${JSON.stringify(rejection.stage)}, ` +
+        'which is neither "header" nor "unseal"'
+    );
+  }
+
+  const refusal = reader.cannotOpen[container.mode];
+  if (refusal) return expectModeRefusal(reader, state, set, container, refusal);
+
+  const twin = findContainer(set, swappedFrom);
+  const twinOpened = await reader.open(state, { set, container: twin });
+  check(twinOpened, set, twin);
+
+  const header = await reader.inspect(state, { set, container });
+  const recipients = [...header.recipients].sort();
+  const twinRecipients = [...twinOpened.recipients].sort();
+  if (JSON.stringify(recipients) !== JSON.stringify(twinRecipients)) {
+    throw new Error(
+      `header recipients ${JSON.stringify(recipients)} differ from the twin ${swappedFrom}'s ` +
+        `${JSON.stringify(twinRecipients)} — the tamper is supposed to leave the header alone`
+    );
+  }
+  if (!header.identity) {
+    throw new Error(
+      'this reader reports no sender identity before decrypting, so there is no way to assert ' +
+        'that the container claims the swapped-in sender — teach its inspect() to return one'
+    );
+  }
+  if (!claims(header.identity, attackerEmail)) {
+    throw new Error(
+      `the header should already claim ${attackerEmail}: ${JSON.stringify(header.identity)}`
+    );
+  }
+  if (claims(header.identity, set.meta.senderEmail)) {
+    throw new Error(
+      `the header still claims the real sender ${set.meta.senderEmail} — this container is not ` +
+        'the tamper meta.json says it is'
+    );
+  }
+
+  if (rejection) {
     let opened;
     try {
       opened = await reader.open(state, { set, container });
     } catch (e) {
-      if (!refusal) throw e;
-      // The reader declares it cannot open this mode, so a refusal is the
-      // expected result — but only the documented one. Anything else is a
-      // container that broke for a real reason wearing a skip's clothing.
-      if (!/mode is not supported/.test(e?.message ?? '')) {
-        throw new Error(
-          `expected the documented refusal for ${container.mode} mode (${refusal}), got: ${e?.message ?? e}`
-        );
-      }
-      return `refused ${container.mode} mode as documented: ${e.message}`;
-    }
-
-    if (refusal) {
-      throw new Error(
-        `this reader is recorded as unable to open a ${container.mode}-mode container ` +
-          `(${refusal}) but it just did — that is a change in the support story: drop the ` +
-          'cannotOpen entry in readers.mjs so the corpus starts holding it to the new behaviour'
+      return (
+        `header parsed and claimed ${attackerEmail}; unseal rejected it as recorded: ${e.message}`
       );
     }
-
-    check(opened, set, container);
-    return `${container.mode} container opened, plaintext and sender verified`;
-  } finally {
-    await reader.unload?.(state ?? {});
+    throw new Error(
+      `this reader is recorded as rejecting a ${kind} container (${rejection.why}) but it just ` +
+        `opened one and recovered ${opened.plaintext.length} bytes: it is reporting ` +
+        `${attackerEmail} to a user as a verified sender. Fix the reader rather than readers.mjs.`
+    );
   }
+
+  const opened = await reader.open(state, { set, container });
+  if (!opened.plaintext.equals(container.plaintext)) {
+    throw new Error(
+      `plaintext mismatch: recovered ${opened.plaintext.length} bytes, expected ` +
+        `${container.plaintext.length} — a reader that cannot reject this container should still ` +
+        'recover what was sealed in it'
+    );
+  }
+  if (!claims(opened.identity?.public, attackerEmail)) {
+    throw new Error(
+      `expected the swapped-in ${attackerEmail} as the verified public sender: ` +
+        JSON.stringify(opened.identity)
+    );
+  }
+  // The real sender surfaces as a *private* policy: pg-core reports the message
+  // signature's policy there whenever it disagrees with the header's, and after
+  // a swap they always do. That is what the bug looked like to a user.
+  if (!claims(opened.identity?.private, set.meta.senderEmail)) {
+    throw new Error(
+      `expected the real sender ${set.meta.senderEmail} to surface as a private policy: ` +
+        JSON.stringify(opened.identity)
+    );
+  }
+  return (
+    `opened as recorded: claims ${attackerEmail}, with the real sender ${set.meta.senderEmail} ` +
+    'reported as a private policy'
+  );
+}
+
+/** The documented mode refusal for this reader, and only that. */
+async function expectModeRefusal(reader, state, set, container, refusal) {
+  try {
+    await reader.open(state, { set, container });
+  } catch (e) {
+    // The reader declares it cannot open this mode, so a refusal is the
+    // expected result — but only the documented one. Anything else is a
+    // container that broke for a real reason wearing a skip's clothing.
+    if (!/mode is not supported/.test(e?.message ?? '')) {
+      throw new Error(
+        `expected the documented refusal for ${container.mode} mode (${refusal}), got: ${e?.message ?? e}`
+      );
+    }
+    return `refused ${container.mode} mode as documented: ${e.message}`;
+  }
+  throw new Error(
+    `this reader is recorded as unable to open a ${container.mode}-mode container ` +
+      `(${refusal}) but it just did — that is a change in the support story: drop the ` +
+      'cannotOpen entry in readers.mjs so the corpus starts holding it to the new behaviour'
+  );
 }
 
 /** Everything the corpus promises about one opened container. */
@@ -84,11 +227,7 @@ function check(opened, set, container) {
     );
   }
 
-  const publicCon = identity?.public?.con ?? [];
-  const senderOk = publicCon.some(
-    (a) => a.t === 'pbdf.sidn-pbdf.email.email' && a.v === set.meta.senderEmail
-  );
-  if (!senderOk) {
+  if (!claims(identity?.public, set.meta.senderEmail)) {
     throw new Error(
       `verified sender missing email=${set.meta.senderEmail}: ${JSON.stringify(identity)}`
     );
@@ -193,8 +332,9 @@ async function main() {
     console.error('\nFAILURES');
     for (const failure of failures) console.error(`  ${failure}`);
     console.error(
-      `\n${failures.length} of ${cases} case(s) failed: a container in the corpus no longer ` +
-        'opens. Old ciphertexts in the wild fail the same way.'
+      `\n${failures.length} of ${cases} case(s) failed: a container the corpus says must open ` +
+        'no longer does — old ciphertexts in the wild fail the same way — or a reader stopped ' +
+        'matching what readers.mjs records it does with a tampered one.'
     );
     process.exitCode = 1;
     return;
