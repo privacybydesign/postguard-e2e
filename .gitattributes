@@ -1,0 +1,4 @@
+# CLAUDE.md is measured in raw bytes by a 4,000 B host gate (see
+# src/claude-md-orientation.test.mjs), so its line endings may not vary by
+# checkout platform.
+CLAUDE.md text eol=lf
