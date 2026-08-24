@@ -56,18 +56,24 @@ postguard's own `wire-compat-rust` gate.
 | `pg-core-0.5.10/` | `pg-core` 0.5.10 (crates.io) | same four | `gen/`, deterministic |
 | `pg-core-0.6.4/` | `pg-core` 0.6.4 (crates.io) | same four | `gen-0-6-4/`, deterministic |
 
-0.6.1 and 0.5.10 are the crates.io rows of the machine-read `Reader list` block
-in postguard's `COMPATIBILITY.md` — the declared support window. What we promise
-to *read* is a sensible list of writers to *archive*.
+0.6.1 and 0.5.10 were the crates.io rows of the machine-read `Reader list` block
+in postguard's `COMPATIBILITY.md` when they were archived — the declared support
+window, whose 0.6.1 row has since moved to 0.6.3. What we promise to *read* is a
+sensible list of writers to *archive*.
 
 0.6.4 is in the corpus for a different reason. It is the first release that
 writes the AEAD-protected copy of the sender's public signing policy
 ([postguard#347](https://github.com/encryption4all/postguard/issues/347)), so it
-is the first writer here that seals the format every new container is sealed in;
-before this set the archival guarantee said nothing about that format. The
-pinned `@e4a/pg-wasm` 0.6.1 predates the field and opens these containers
-anyway — postguard#347 says it should, and this set is where that keeps being
-checked.
+is the first writer here that seals containers in that format; before this set
+the archival guarantee said nothing about it. 0.6.4 also canonicalizes identity
+attribute values before deriving
+([postguard#335](https://github.com/encryption4all/postguard/issues/335)), but
+every attribute value in this set is already canonical — `mpk.json`, `vk.json`,
+`usk.json` and `signkey.json` are byte-identical to the 0.5.10 and 0.6.1 sets,
+which is the evidence that no derivation moved — so the set pins the `pub_pol`
+half of the 0.6.4 era and not the canonicalization half. The pinned
+`@e4a/pg-wasm` 0.6.1 predates the field and opens these containers anyway —
+postguard#347 says it should, and this set is where that keeps being checked.
 
 Both container modes are covered because they are different wire formats, and
 this is the seam behind
@@ -153,8 +159,8 @@ Never regenerate; only append.
 For a **published `pg-core`** (the generators already speak this):
 
 ```sh
-cd gen-0-6-4                      # the crate that pins the version you want
-cargo run --locked -- 0.6.4 ../pg-core-0.6.4
+cd gen-<pin>                      # the crate that pins the version you want
+cargo run --locked -- <version> ../pg-core-<version>
 cd .. && npm run ledger:write     # appends the new lines; review the diff
 npm run verify && (cd ../fixtures-verify && cargo run)
 ```
