@@ -153,8 +153,8 @@ Never regenerate; only append.
 For a **published `pg-core`** (the generators already speak this):
 
 ```sh
-cd gen                            # or gen-0-6-4, whichever pins the version
-cargo run --locked -- 0.6.1 ../pg-core-0.6.1
+cd gen-0-6-4                      # the crate that pins the version you want
+cargo run --locked -- 0.6.4 ../pg-core-0.6.4
 cd .. && npm run ledger:write     # appends the new lines; review the diff
 npm run verify && (cd ../fixtures-verify && cargo run)
 ```
@@ -165,7 +165,7 @@ semver-INCOMPATIBLE, because cargo keeps one copy per compatible range. Copy the
 nearest `gen*/` directory, move the pin, and add it to the `NOT_A_SET` list in
 `corpus.mjs` and in `../fixtures-verify/src/main.rs` — a generator directory
 that is missing from those is read as a fixture set and fails on its absent
-`meta.json`. It also wants a `target/` line in the root `.gitignore` and a
+`meta.json`. It also needs a `target/` line in the root `.gitignore` and a
 `cargo fmt --check` step in the `fmt` job of
 [`.github/workflows/e2e.yml`](../.github/workflows/e2e.yml).
 
