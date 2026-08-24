@@ -19,5 +19,8 @@ stack/irma/*.pem
 fixtures-verify/target/
 fixtures-verify/Cargo.lock
 
-# fixture generator build artifacts (published pg-core writers; the lockfile IS committed)
+# fixture generator build artifacts (published pg-core writers; the lockfile IS
+# committed). One directory per pinned writer: cargo keeps one copy of a crate
+# per semver-compatible range, so a same-minor pin needs its own crate.
 fixtures/gen/target/
+fixtures/gen-0-6-4/target/

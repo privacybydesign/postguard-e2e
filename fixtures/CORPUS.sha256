@@ -16,6 +16,15 @@ d8e3b5c11294fb32f216f868ec1e839491b47974603ca39b349ec741e5d95156  fixtures/pg-co
 e3afada74e2d82abe2f18647b749ed247b34c477fdf89e4bdeb26982b2df2b55  fixtures/pg-core-0.6.1/stream.bin
 c8497e33e987d87fdd1692e5266b8d104dd2f2b9fb83ad6f13f4178ec35b17a6  fixtures/pg-core-0.6.1/usk.json
 3e92940b8d8cf5f88a031766a37b517f157666d5c4a7110d4bae7bd65ea4b18c  fixtures/pg-core-0.6.1/vk.json
+e08256205f143fbbc3dfd9311e2717e3bfed000d5fe92eb1f853e75270481dbd  fixtures/pg-core-0.6.4/mem-privsig.bin
+016d73f891f8eea4db023b19edd5769228065f96e4b828d335f5a1f4f6950291  fixtures/pg-core-0.6.4/mem.bin
+5246d47367eb4b5c0b3611556c4779807c157b966f547607de4b2c1ea4ee2265  fixtures/pg-core-0.6.4/meta.json
+90982c3c48699daf45e9ac926e5c3f25e895cdf7adeaff24d85604f1b9ba4902  fixtures/pg-core-0.6.4/mpk.json
+21be33bfd329dee322864de3865a894f7148205369e56a6a3463c98512bfa1d9  fixtures/pg-core-0.6.4/signkey.json
+03842a978f99bcd7007d9e419aab8acccdf4b20df7cfa72f0358045f69fd3b4f  fixtures/pg-core-0.6.4/stream-privsig.bin
+fe2a675b0a0ba0bff526cbbf3fb2528be99cdb6422ca29bf9290e7cb89e41687  fixtures/pg-core-0.6.4/stream.bin
+c8497e33e987d87fdd1692e5266b8d104dd2f2b9fb83ad6f13f4178ec35b17a6  fixtures/pg-core-0.6.4/usk.json
+3e92940b8d8cf5f88a031766a37b517f157666d5c4a7110d4bae7bd65ea4b18c  fixtures/pg-core-0.6.4/vk.json
 dfaccb6d29cbd14d12e77e129c86a618dd47e7303ac51e0db417c0fc26f4d2fb  fixtures/pg-wasm-0.6.1/mem.bin
 8abfb0de99398e9f6be2d07e6b4eabdb446e2ecc8127519071b183465ba9921f  fixtures/pg-wasm-0.6.1/meta.json
 a71f88d9689bb06a306ef2b98eadd63439c0db5a717f7279b279df2fd012c301  fixtures/pg-wasm-0.6.1/mpk.json

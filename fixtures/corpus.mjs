@@ -24,15 +24,26 @@ export const REPO_ROOT = dirname(FIXTURES);
  *     and one set-wide `plaintextB64`, with no `containers` list at all.
  * 2 — a `containers` list with a plaintext per container, so a set can carry
  *     more than the two classic files.
+ * 3 — layout identical to 2. The bump marks the sets sealed from `pg-core`
+ *     0.6.4 on, so a later field can be added to 3 and a verifier that only
+ *     knows 1 and 2 refuses those sets instead of reading past the field.
  *
- * A schema outside this list is a failure, never a skip. Schema 1 sets can
- * never be migrated to 2 (editing them is what the append-only rule forbids),
- * so both stay supported forever.
+ * A schema outside this list is a failure, never a skip. A set can never be
+ * migrated to a newer schema (editing it is what the append-only rule forbids),
+ * so every version here stays supported forever.
  */
-export const SUPPORTED_SCHEMA_VERSIONS = [1, 2];
+export const SUPPORTED_SCHEMA_VERSIONS = [1, 2, 3];
 
-/** Directories directly under `fixtures/` that are tooling, not a fixture set. */
-const NOT_A_SET = new Set(['node_modules', 'gen']);
+/**
+ * Directories directly under `fixtures/` that are tooling, not a fixture set.
+ *
+ * One generator crate per pinned writer, because cargo keeps one copy of a
+ * crate per semver-compatible range — see `gen-0-6-4/Cargo.toml`. Listing each
+ * by name rather than matching `gen*`: a generator directory nobody added here
+ * is read as a fixture set and fails on its missing `meta.json`, which is the
+ * loud half of the two ways to be wrong.
+ */
+const NOT_A_SET = new Set(['node_modules', 'gen', 'gen-0-6-4']);
 
 /**
  * Files directly under `fixtures/` that are tooling: the verifiers, their
@@ -51,6 +62,7 @@ const TOOLING_FILES = new Set([
   'append-only.mjs',
   'append-only.test.mjs',
   'corpus.mjs',
+  'corpus.test.mjs',
   'ledger.mjs',
   'readers.mjs',
   'verify.mjs',
@@ -138,7 +150,8 @@ export function loadSet(name) {
 
   // Schema 1 has no list: it is exactly the two classic files, public signature
   // only. Spelling the default out is what keeps the corpus append-only — the
-  // original set's meta.json can never be edited to add the field.
+  // original set's meta.json can never be edited to add the field. Schema 3
+  // carries the same list as 2.
   const declared = meta.containers ?? [
     { file: 'mem.bin', mode: 'memory' },
     { file: 'stream.bin', mode: 'stream' },

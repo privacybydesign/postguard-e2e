@@ -3,7 +3,7 @@
 //! guarantee (EPIC issue #206, corpus in #19/#23).
 //!
 //! The containers were sealed by *published* writers (`@e4a/pg-wasm` via the
-//! live stack, published `pg-core` releases via `../fixtures/gen`); this binary
+//! live stack, published `pg-core` releases via `../fixtures/gen*`); this binary
 //! unseals them with the `pg-core` checked out next to this repo. If it fails,
 //! the working tree broke wire-format compatibility (VERSION constant, bincode
 //! framing, header layout, …) and ciphertexts in the wild — old encrypted
@@ -44,10 +44,15 @@ use serde::Deserialize;
 /// `meta.json` layouts this verifier understands. A schema it does not
 /// recognise is a failure and never a skip: a corpus job that reads nothing and
 /// reports success is worse than no job at all.
-const SUPPORTED_SCHEMA_VERSIONS: &[u32] = &[1, 2];
+///
+/// 3 has the same layout as 2; the bump marks the sets sealed from `pg-core`
+/// 0.6.4 on, so a later field can be added to 3 and a verifier that only knows
+/// 1 and 2 refuses those sets instead of reading past the field.
+const SUPPORTED_SCHEMA_VERSIONS: &[u32] = &[1, 2, 3];
 
 /// Directories under `fixtures/` that are tooling rather than a fixture set.
-const NOT_A_SET: &[&str] = &["node_modules", "gen"];
+/// One generator crate per pinned writer — see `../fixtures/gen-0-6-4/Cargo.toml`.
+const NOT_A_SET: &[&str] = &["node_modules", "gen", "gen-0-6-4"];
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -58,7 +63,7 @@ struct Meta {
     sealed_by: String,
     recipient_id: String,
     sender_email: String,
-    /// Set-wide plaintext (schema 1). Schema 2 records one per container.
+    /// Set-wide plaintext (schema 1). Schemas 2 and 3 record one per container.
     #[serde(default)]
     plaintext_b64: Option<String>,
     #[serde(default)]

@@ -31,9 +31,10 @@ themselves tested: `append-only.test.mjs` builds a throwaway repository, deletes
 and edits a fixture in it, and asserts the gate goes red — because a gate only
 ever observed reporting success has not been observed.
 
-The gates, this README and `gen/` are **not** part of the corpus: they stay
-editable, or the corpus could never gain a reader. `corpus.mjs` owns that
-distinction (`isCorpusPath`) so every gate draws the line in the same place.
+The gates, this README and the `gen*/` writer crates are **not** part of the
+corpus: they stay editable, or the corpus could never gain a reader.
+`corpus.mjs` owns that distinction (`isCorpusPath`) so every gate draws the line
+in the same place.
 
 If a verifier goes red, that is never automatically a bug — it may be a
 deliberate format change. It is always a **decision**: fix the accidental break,
@@ -53,10 +54,26 @@ postguard's own `wire-compat-rust` gate.
 | `pg-wasm-0.6.1/` | `@e4a/pg-wasm` 0.6.1 (npm) | `mem.bin`, `stream.bin` — public signature only | live e2e stack, real Yivi disclosure |
 | `pg-core-0.6.1/` | `pg-core` 0.6.1 (crates.io) | `mem.bin`, `stream.bin`, `mem-privsig.bin`, `stream-privsig.bin` | `gen/`, deterministic |
 | `pg-core-0.5.10/` | `pg-core` 0.5.10 (crates.io) | same four | `gen/`, deterministic |
+| `pg-core-0.6.4/` | `pg-core` 0.6.4 (crates.io) | same four | `gen-0-6-4/`, deterministic |
 
-The two `pg-core` versions are the crates.io rows of the machine-read
-`Reader list` block in postguard's `COMPATIBILITY.md` — the declared support
-window. What we promise to *read* is a sensible list of writers to *archive*.
+0.6.1 and 0.5.10 were the crates.io rows of the machine-read `Reader list` block
+in postguard's `COMPATIBILITY.md` when they were archived — the declared support
+window, whose 0.6.1 row has since moved to 0.6.3. What we promise to *read* is a
+sensible list of writers to *archive*.
+
+0.6.4 is in the corpus for a different reason. It is the first release that
+writes the AEAD-protected copy of the sender's public signing policy
+([postguard#347](https://github.com/encryption4all/postguard/issues/347)), so it
+is the first writer here that seals containers in that format; before this set
+the archival guarantee said nothing about it. 0.6.4 also canonicalizes identity
+attribute values before deriving
+([postguard#335](https://github.com/encryption4all/postguard/issues/335)), but
+every attribute value in this set is already canonical — `mpk.json`, `vk.json`,
+`usk.json` and `signkey.json` are byte-identical to the 0.5.10 and 0.6.1 sets,
+which is the evidence that no derivation moved — so the set pins the `pub_pol`
+half of the 0.6.4 era and not the canonicalization half. The pinned
+`@e4a/pg-wasm` 0.6.1 predates the field and opens these containers anyway —
+postguard#347 says it should, and this set is where that keeps being checked.
 
 Both container modes are covered because they are different wire formats, and
 this is the seam behind
@@ -88,13 +105,16 @@ Key material is committed because the e2e stack's IBE keys are ephemeral
 (regenerated per image build): a fixture has to carry everything needed to open
 it. These are **test keys for test data**; nothing here protects anything real.
 
-`meta.json` has two schemas, and both stay supported forever, because schema 1
-sets can never be migrated — editing them is exactly what the rule forbids:
+`meta.json` has three schemas, and all of them stay supported forever, because a
+set can never be migrated — editing it is exactly what the rule forbids:
 
 - **1** — no `containers` list: it means `mem.bin` + `stream.bin`, public
   signature only, with one set-wide `plaintextB64`.
 - **2** — a `containers` list, one plaintext per container, so a set can carry
   more than the two classic files.
+- **3** — the same layout as 2, on the sets sealed from `pg-core` 0.6.4 on. The
+  version exists so a field can later be added to 3 and a reader that knows only
+  1 and 2 refuses those sets rather than reading past it.
 
 A verifier that meets a schema it does not know **fails**; it never skips. A
 corpus job that reads nothing and reports success is worse than no job.
@@ -136,16 +156,24 @@ the container that died and the signal that killed it.
 
 Never regenerate; only append.
 
-For a **published `pg-core`** (the generator already speaks this):
+For a **published `pg-core`** (the generators already speak this):
 
 ```sh
-cd gen
-# add a renamed dependency + a writer!() line if the version is new; note that
-# two `=` pins of the same crate only coexist when they are semver-INCOMPATIBLE
-cargo run --locked -- 0.6.1 ../pg-core-0.6.1
+cd gen-<pin>                      # the crate that pins the version you want
+cargo run --locked -- <version> ../pg-core-<version>
 cd .. && npm run ledger:write     # appends the new lines; review the diff
 npm run verify && (cd ../fixtures-verify && cargo run)
 ```
+
+One crate per pin, and a new one when the version shares its minor with a pin
+that already exists: two `=` pins of the same crate only coexist when they are
+semver-INCOMPATIBLE, because cargo keeps one copy per compatible range. Copy the
+nearest `gen*/` directory, move the pin, and add it to the `NOT_A_SET` list in
+`corpus.mjs` and in `../fixtures-verify/src/main.rs` — a generator directory
+that is missing from those is read as a fixture set and fails on its absent
+`meta.json`. It also needs a `target/` line in the root `.gitignore` and a
+`cargo fmt --check` step in the `fmt` job of
+[`.github/workflows/e2e.yml`](../.github/workflows/e2e.yml).
 
 The generator refuses to write into a directory that already holds part of a
 set, so "regenerate in place" is not an available accident. Its output is a pure
