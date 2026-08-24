@@ -1,0 +1,28 @@
+[package]
+name = "fixtures-gen-0-6-4"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Seals the golden container fixture set for PUBLISHED pg-core 0.6.4 from crates.io."
+
+# A separate crate directory rather than another pin in `../gen`, for the reason
+# that crate's Cargo.toml records: two `=` pins of the same crate only coexist
+# when they are semver-INCOMPATIBLE, and cargo keeps one copy per compatible
+# range, so 0.6.4 cannot sit beside 0.6.1 in one manifest.
+#
+# 0.6.4 is the first release that writes the AEAD-protected copy of the
+# sender's public signing policy (postguard#347/#351), so it is the first
+# writer in the corpus from that era.
+[dependencies]
+pg-core = { version = "=0.6.4", default-features = false, features = [
+  "rust",
+  "stream",
+] }
+
+# Reproducible-by-contract RNG: `StdRng` is explicitly not stable across rand
+# releases, `ChaCha20Rng` is. Same choice as `../gen` and as pg-core's own
+# sample sealer.
+rand = "0.8"
+rand_chacha = "0.3"
+serde_json = "1"
+futures = "0.3"

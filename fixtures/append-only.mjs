@@ -18,9 +18,10 @@
 //!    consistent on its own.
 //!
 //! Tooling under `fixtures/` (the verifiers, this gate, the README, the
-//! package files, `gen/`) is deliberately NOT protected: the gates have to stay
-//! editable or the corpus could never gain a reader. `corpus.mjs` owns that
-//! distinction so every gate draws the line in exactly the same place.
+//! package files, the `gen*/` writer crates) is deliberately NOT protected: the
+//! gates have to stay editable or the corpus could never gain a reader.
+//! `corpus.mjs` owns that distinction so every gate draws the line in exactly
+//! the same place.
 
 import { execFileSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';

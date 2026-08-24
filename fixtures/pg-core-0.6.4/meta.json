@@ -1,0 +1,55 @@
+{
+  "con": [
+    {
+      "t": "irma-demo.RU.studentCard.level",
+      "v": "PhD"
+    }
+  ],
+  "containers": [
+    {
+      "file": "mem.bin",
+      "mode": "memory",
+      "plaintextB64": "cG9zdGd1YXJkLWUyZSBjb250YWluZXIgY29ycHVzOiBwZy1jb3JlIDAuNi40IG1lbW9yeSBjb250YWluZXI7IG9sZCBjaXBoZXJ0ZXh0cyBtdXN0IGRlY3J5cHQgZm9yZXZlcg==",
+      "privateSigning": false
+    },
+    {
+      "file": "stream.bin",
+      "mode": "stream",
+      "plaintextB64": "cG9zdGd1YXJkLWUyZSBjb250YWluZXIgY29ycHVzOiBwZy1jb3JlIDAuNi40IHN0cmVhbSBjb250YWluZXI7IG9sZCBjaXBoZXJ0ZXh0cyBtdXN0IGRlY3J5cHQgZm9yZXZlcg==",
+      "privateSigning": false
+    },
+    {
+      "file": "mem-privsig.bin",
+      "mode": "memory",
+      "plaintextB64": "cG9zdGd1YXJkLWUyZSBjb250YWluZXIgY29ycHVzOiBwZy1jb3JlIDAuNi40IG1lbW9yeSBjb250YWluZXIsIHByaXZhdGUgc2lnbmF0dXJlOyBvbGQgY2lwaGVydGV4dHMgbXVzdCBkZWNyeXB0IGZvcmV2ZXI=",
+      "privateSigning": true
+    },
+    {
+      "file": "stream-privsig.bin",
+      "mode": "stream",
+      "plaintextB64": "cG9zdGd1YXJkLWUyZSBjb250YWluZXIgY29ycHVzOiBwZy1jb3JlIDAuNi40IHN0cmVhbSBjb250YWluZXIsIHByaXZhdGUgc2lnbmF0dXJlOyBvbGQgY2lwaGVydGV4dHMgbXVzdCBkZWNyeXB0IGZvcmV2ZXI=",
+      "privateSigning": true
+    }
+  ],
+  "files": {
+    "mpk.json": "PKG /v2/parameters response (master public key)",
+    "signkey.json": "PKG POST /v2/irma/sign/key response (sender signing keys)",
+    "usk.json": "PKG /v2/irma/key/{ts} response (recipient IBE user secret key)",
+    "vk.json": "PKG /v2/sign/parameters response (IBS verifying key)"
+  },
+  "recipientId": "phd-holder",
+  "schemaVersion": 3,
+  "sealedBy": "pg-core@0.6.4",
+  "senderEmail": "sender@golden.test",
+  "senderPrivate": {
+    "t": "pbdf.gemeente.personalData.fullname",
+    "v": "Golden Sender"
+  },
+  "ts": 1704067200,
+  "wireVersion": 2,
+  "writer": {
+    "package": "pg-core",
+    "registry": "crates.io",
+    "version": "0.6.4"
+  }
+}
