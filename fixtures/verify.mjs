@@ -69,6 +69,48 @@ async function runPositiveCase(reader, state, set, container) {
 }
 
 /**
+ * Every `rejectsTampered` entry has to be answerable before it is believed: a
+ * stage to fail at, and a pattern the failure has to match. Neither is
+ * optional, because a rejection with nothing to match is a rejection that
+ * passes on any throw at all — see [`expectRecordedRefusal`].
+ */
+function validateRejection(reader, kind, rejection) {
+  if (rejection.stage !== 'header' && rejection.stage !== 'unseal') {
+    throw new Error(
+      `readers.mjs records ${reader.id}'s rejectsTampered['${kind}'].stage = ` +
+        `${JSON.stringify(rejection.stage)}, which is neither "header" nor "unseal"`
+    );
+  }
+  if (!(rejection.refusal instanceof RegExp)) {
+    throw new Error(
+      `readers.mjs records no rejectsTampered['${kind}'].refusal pattern for ${reader.id}: a ` +
+        'tampered container and a merely broken one make a reader throw alike, so the message ' +
+        'has to be matched and not merely caught'
+    );
+  }
+}
+
+/**
+ * The refusal `readers.mjs` records, and only that — the same discipline
+ * [`expectModeRefusal`] applies to a mode refusal, and for the same reason. A
+ * missing file, a truncated container, a reader that no longer agrees with the
+ * header layout: all of them throw here too, and every one of them would
+ * otherwise be reported as the tamper being caught.
+ */
+function expectRecordedRefusal(e, kind, stage, rejection) {
+  const message = e?.message ?? String(e);
+  if (!rejection.refusal.test(message)) {
+    throw new Error(
+      `expected the ${stage} refusal readers.mjs records for a ${kind} container ` +
+        `(${rejection.refusal}), got: ${message} — a container that is merely broken throws ` +
+        'here too, so an unmatched message means this is no longer the tamper meta.json says ' +
+        'it is rather than a reader that caught one'
+    );
+  }
+  return message;
+}
+
+/**
  * A container whose header signature block was replaced. Four things are
  * asserted together, because the error a rejecting reader raises
  * (`IncorrectSignature`) is the one plain corruption raises too — postguard#347
@@ -81,7 +123,7 @@ async function runPositiveCase(reader, state, set, container) {
  *     recipients as the twin;
  *  3. the identity reported **before** decrypting is the one the swapped block
  *     claims, and not the real sender's;
- *  4. only `unseal` fails.
+ *  4. only `unseal` fails, and with the recorded message.
  *
  * For a reader recorded as unable to reject, the mirror of 4: it opens, hands
  * back the recorded plaintext, and reports the claim. That is the blast radius
@@ -90,25 +132,24 @@ async function runPositiveCase(reader, state, set, container) {
 async function runTamperedCase(reader, state, set, container) {
   const { kind, swappedFrom, attackerEmail } = container.tampered;
   const rejection = reader.rejectsTampered?.[kind];
+  if (rejection) validateRejection(reader, kind, rejection);
 
-  // Recorded as refusing before it reads the payload at all: there is nothing
-  // after that to assert, so assert the refusal and stop.
+  // Recorded as refusing before it reads the payload at all. Assertions 2 to 4
+  // are about a container this reader will not parse, so they are unavailable —
+  // what is left is 1, which says the corpus and the reader are sound, and the
+  // refusal being the recorded one rather than any error whatsoever.
   if (rejection?.stage === 'header') {
+    await runPositiveCase(reader, state, set, findContainer(set, swappedFrom));
     try {
       await reader.inspect(state, { set, container });
     } catch (e) {
-      return `refused a ${kind} container at the header as recorded: ${e.message}`;
+      const message = expectRecordedRefusal(e, kind, 'header', rejection);
+      return `refused a ${kind} container at the header as recorded: ${message}`;
     }
     throw new Error(
       `this reader is recorded as refusing a ${kind} container at the header (${rejection.why}) ` +
         'but it just parsed one — move the rejectsTampered entry in readers.mjs to the stage it ' +
         'fails at now, or drop it'
-    );
-  }
-  if (rejection && rejection.stage !== 'unseal') {
-    throw new Error(
-      `readers.mjs records rejectsTampered['${kind}'].stage = ${JSON.stringify(rejection.stage)}, ` +
-        'which is neither "header" nor "unseal"'
     );
   }
 
@@ -151,9 +192,8 @@ async function runTamperedCase(reader, state, set, container) {
     try {
       opened = await reader.open(state, { set, container });
     } catch (e) {
-      return (
-        `header parsed and claimed ${attackerEmail}; unseal rejected it as recorded: ${e.message}`
-      );
+      const message = expectRecordedRefusal(e, kind, 'unseal', rejection);
+      return `header parsed and claimed ${attackerEmail}; unseal rejected it as recorded: ${message}`;
     }
     throw new Error(
       `this reader is recorded as rejecting a ${kind} container (${rejection.why}) but it just ` +

@@ -195,13 +195,17 @@ export function loadSet(name) {
           `${name}/${container.file}: unknown tamper kind ${kind} (know ${TAMPER_KINDS.join(', ')})`
         );
       }
-      // The twin has to be in the same set: every assertion about a tampered
-      // container is made against it, so a set that cannot resolve it declares
-      // a negative case nothing can check.
-      if (!declared.some((c) => c.file === swappedFrom)) {
+      // The twin has to be another container in the same set, and an
+      // untampered one: every assertion about a tampered container is made
+      // against it and it is opened as a positive first, so a set that cannot
+      // resolve one declares a negative case nothing can check. Naming itself
+      // would resolve, and check the container against itself.
+      const twin = declared.find((c) => c.file === swappedFrom);
+      if (!twin || twin === container || twin.tampered) {
         throw new Error(
           `${name}/${container.file}: tampered.swappedFrom names ${swappedFrom}, which this set ` +
-            'does not declare'
+            'does not declare as another, untampered container — that twin is what every ' +
+            'assertion about this container is made against'
         );
       }
       if (!attackerEmail) {

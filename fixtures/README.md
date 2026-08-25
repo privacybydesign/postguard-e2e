@@ -197,7 +197,12 @@ too, so "it threw" would pass on a fixture that is merely broken:
 2. the tampered container's header still parses, and lists the same recipients
    as the twin;
 3. the identity reported *before* decrypting is the swapped-in one;
-4. only `unseal` fails.
+4. only `unseal` fails, and with the message `readers.mjs` records for it.
+
+A reader that refuses before it reads the payload has no 2 or 3 to be asked
+about — the container it would parse is one it will not touch. There, 1 and the
+recorded message are the whole assertion, which is why the message is not
+optional: a missing file and a truncated container throw there too.
 
 Two readers reject: `@e4a/pg-wasm` 0.6.4 and the working-tree `pg-core`. Two
 record the non-rejection — `@e4a/pg-wasm` 0.6.1 and the current `pg-js` open the
@@ -210,10 +215,11 @@ which is not the tamper check finding anything: they predate canonicalization
 cannot derive the signer identity from a respelled policy at all. That reason is
 recorded beside the refusal, so it is not read as the fix being present.
 
-`verify.test.mjs` is the proof those expectations bite: it copies the corpus,
-puts the good twin in a tampered container's place, and requires every one of
-those cases to go red. A good container passing a negative assertion can only
-mean the assertion was decoration.
+`verify.test.mjs` is the proof those expectations bite: it copies the corpus and
+requires every case to go red twice over — once with the good twin put in the
+tampered container's place, and once with the container zeroed. A good container
+passing a negative assertion can only mean the assertion was decoration; a
+broken one passing means it was satisfied by any throw at all.
 
 **`pg-js` cannot read a memory-mode container**, and that is structural rather
 than a defect: it decrypts through `StreamUnsealer` in both of its input modes,

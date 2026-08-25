@@ -6,10 +6,18 @@
 //! negative case that passes because it never really looked is indistinguishable
 //! from one that passes because the reader behaved.
 //!
-//! So each case is run again against a corpus where the **good twin has been
-//! put in the tampered container's place**. A good container is a container
-//! nothing is wrong with, so every one of these runs has to go red — if one
-//! stays green, that expectation was decoration.
+//! So each case is run again twice, against a corpus damaged in the two ways
+//! that would let a negative case pass without looking:
+//!
+//! - the **good twin put in the tampered container's place**. A good container
+//!   is a container nothing is wrong with, so a reader recorded as rejecting
+//!   must not reject it.
+//! - the container **zeroed**. A broken container makes every reader throw, and
+//!   a rejection recorded without a message to match would report that throw as
+//!   the tamper being caught.
+//!
+//! Every one of these runs has to go red — if one stays green, that expectation
+//! was decoration.
 //!
 //! Mutating the reader instead is not available here: the readers are published
 //! tarballs. `../fixtures-verify/` covers that side, where `pg-core` is a path
@@ -22,7 +30,16 @@
 
 import { spawnSync } from 'node:child_process';
 import assert from 'node:assert/strict';
-import { copyFileSync, cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import {
+  copyFileSync,
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, describe, it } from 'node:test';
@@ -49,6 +66,9 @@ const CASES = [
     // Assertion 3 is the one a good container fails first: it claims the real
     // sender, so there is nothing for `unseal` to be asked about.
     red: /should already claim attacker@golden\.test/,
+    // Zeroed, it never reaches the tamper assertions at all: the header does
+    // not parse, and nothing in this reader's path swallows that.
+    redWhenBroken: /does not start with the expected prelude/,
   },
   {
     what: 'a reader that opens it and reports the claim',
@@ -56,6 +76,7 @@ const CASES = [
     container: 'stream-spoofed.bin',
     twin: 'stream.bin',
     red: /should already claim attacker@golden\.test/,
+    redWhenBroken: /does not start with the expected prelude/,
   },
   {
     what: 'a reader that refuses it at the header',
@@ -63,6 +84,11 @@ const CASES = [
     container: 'mem-respelled.bin',
     twin: 'mem.bin',
     red: /recorded as refusing a respelled-sender container at the header/,
+    // The case that has to match the recorded message rather than merely
+    // catching: this reader refuses the container before it reads anything, so
+    // the refusal is the only evidence there is, and a broken container
+    // produces one too.
+    redWhenBroken: /expected the header refusal readers\.mjs records/,
   },
 ];
 
@@ -151,6 +177,33 @@ describe('the good twin put in a tampered container’s place', () => {
         `${twin} passed as ${container}, so this expectation checks nothing: ${report}`
       );
       assert.match(report, red);
+    });
+  }
+});
+
+/**
+ * The other direction, and the one a good twin cannot reach: a container that
+ * is merely **broken**. Every reader throws on one, and a recorded rejection
+ * that only catches would report that throw as the tamper being caught — which
+ * is a negative case passing on bytes that are not the tamper at all.
+ *
+ * Zeroed rather than deleted, so the failure is a reader refusing a container
+ * and not a corpus missing a file.
+ */
+describe('a merely broken container put in a tampered container’s place', () => {
+  for (const { what, reader, container, redWhenBroken } of CASES) {
+    it(`is not read as the tamper by ${what} (${reader}, ${container})`, () => {
+      const fixtures = corpusWith(SET, (dir) => {
+        const size = statSync(join(dir, container)).size;
+        writeFileSync(join(dir, container), Buffer.alloc(size));
+      });
+      const { ok, report } = runCase(fixtures, reader, SET, container);
+      assert.equal(
+        ok,
+        false,
+        `${container} zeroed still passed, so this expectation is satisfied by any throw: ${report}`
+      );
+      assert.match(report, redWhenBroken);
     });
   }
 });

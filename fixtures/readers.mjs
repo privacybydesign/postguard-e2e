@@ -38,6 +38,11 @@
 //! reports the identity they claim. That non-rejection is the blast radius
 //! written down: recorded here, it holds the reader to what it does today and
 //! turns a pin bump into a visible failure rather than a silent change.
+//!
+//! An entry carries the `stage` the reader fails at and the `refusal` pattern
+//! the failure has to match, because a rejection recorded without one would be
+//! satisfied by any throw at all — a truncated container, a missing file, a
+//! reader that no longer agrees with the header layout.
 
 import { readFileSync } from 'node:fs';
 import { readFile as readFileAsync } from 'node:fs/promises';
@@ -54,6 +59,18 @@ export const PG_JS_MEMORY_REFUSAL = /mode is not supported: InMemory/;
 const PG_WASM_PACKAGE = '@e4a/pg-wasm';
 
 /**
+ * The error `pg-core` raises for a header signature it will not accept, and the
+ * pattern every `rejectsTampered` entry below is matched by.
+ *
+ * It is the same error plain corruption raises, deliberately: postguard#347
+ * reuses `Error::IncorrectSignature` rather than adding a variant to a public
+ * enum carrying no `#[non_exhaustive]`, which would have been a major. So
+ * matching it is necessary but never sufficient, which is why `verify.mjs`
+ * asserts three more things around it.
+ */
+const INCORRECT_SIGNATURE = /incorrect signature/i;
+
+/**
  * Why the two pre-fix readers refuse a `respelled-sender` container outright,
  * which is *not* the tamper check finding anything.
  *
@@ -66,6 +83,7 @@ const PG_WASM_PACKAGE = '@e4a/pg-wasm';
  */
 const RESPELL_REFUSED_AT_HEADER = {
   stage: 'header',
+  refusal: INCORRECT_SIGNATURE,
   why:
     'this reader predates canonicalization (postguard#335): it derives the signer identity from ' +
     'the policy bytes as they stand, so the header signature over a respelled policy does not ' +
@@ -223,6 +241,7 @@ const pgWasm064 = pgWasmReader({
   rejectsTampered: {
     'swapped-signer': {
       stage: 'unseal',
+      refusal: INCORRECT_SIGNATURE,
       why:
         'the AEAD-protected copy of the sender\'s public signing policy names the real sender ' +
         'and the header signature block names someone else (postguard#347), so the header still ' +
@@ -230,6 +249,7 @@ const pgWasm064 = pgWasmReader({
     },
     'respelled-sender': {
       stage: 'unseal',
+      refusal: INCORRECT_SIGNATURE,
       why:
         'the check is byte equality on the policy and not identity equality, so a respelling ' +
         'that derives the same sender is rejected too — which is what separates a reader that ' +

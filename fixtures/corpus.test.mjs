@@ -152,4 +152,31 @@ describe('an unsupported schema', () => {
       message: /swappedFrom names elsewhere\.bin, which this set does not declare/,
     });
   });
+
+  it('refuses a tamper naming itself as its twin', async () => {
+    // It resolves, which is the point: the twin is opened as a positive and
+    // every assertion is made against it, so a container that is its own twin
+    // is checked against the very bytes under suspicion.
+    const corpus = await corpusWith(
+      'writer-9.9.9',
+      withTamper({
+        kind: TAMPER_KINDS[0],
+        swappedFrom: 'mem-spoofed.bin',
+        attackerEmail: 'a@b.test',
+      })
+    );
+    assert.throws(() => corpus.loadSet('writer-9.9.9'), {
+      message: /swappedFrom names mem-spoofed\.bin, which this set does not declare as another/,
+    });
+  });
+
+  it('refuses a tamper with no claimed address', async () => {
+    const corpus = await corpusWith(
+      'writer-9.9.9',
+      withTamper({ kind: TAMPER_KINDS[0], swappedFrom: 'mem.bin' })
+    );
+    assert.throws(() => corpus.loadSet('writer-9.9.9'), {
+      message: /tampered with no attackerEmail/,
+    });
+  });
 });
