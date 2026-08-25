@@ -32,6 +32,7 @@ describe('which paths the corpus rule protects', () => {
     for (const tooling of [
       'fixtures/README.md',
       'fixtures/verify.mjs',
+      'fixtures/verify.test.mjs',
       'fixtures/corpus.mjs',
       'fixtures/ledger.mjs',
       'fixtures/append-only.mjs',

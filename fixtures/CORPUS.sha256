@@ -16,6 +16,17 @@ d8e3b5c11294fb32f216f868ec1e839491b47974603ca39b349ec741e5d95156  fixtures/pg-co
 e3afada74e2d82abe2f18647b749ed247b34c477fdf89e4bdeb26982b2df2b55  fixtures/pg-core-0.6.1/stream.bin
 c8497e33e987d87fdd1692e5266b8d104dd2f2b9fb83ad6f13f4178ec35b17a6  fixtures/pg-core-0.6.1/usk.json
 3e92940b8d8cf5f88a031766a37b517f157666d5c4a7110d4bae7bd65ea4b18c  fixtures/pg-core-0.6.1/vk.json
+ac72ea8b9a8eae8bdab092cbaba8a92b17e091d299839d02fde79303cd594211  fixtures/pg-core-0.6.4-tampered/attacker-signkey.json
+51ec1411dcc9bef4b960a007f4c45951ae9972ca6fa39700cf5926295db841ed  fixtures/pg-core-0.6.4-tampered/mem-respelled.bin
+ecd26a03084514a39d32bdc374f4c268b09d5c6ce290c674ab60ef3fa16afa93  fixtures/pg-core-0.6.4-tampered/mem-spoofed.bin
+016d73f891f8eea4db023b19edd5769228065f96e4b828d335f5a1f4f6950291  fixtures/pg-core-0.6.4-tampered/mem.bin
+01c59a64ece76fb5a2aff598b937f4b3e67a42266931953d8a22d68472c5c3a5  fixtures/pg-core-0.6.4-tampered/meta.json
+90982c3c48699daf45e9ac926e5c3f25e895cdf7adeaff24d85604f1b9ba4902  fixtures/pg-core-0.6.4-tampered/mpk.json
+21be33bfd329dee322864de3865a894f7148205369e56a6a3463c98512bfa1d9  fixtures/pg-core-0.6.4-tampered/signkey.json
+9a5be8e18f49e6d48ab850240aa04843cdd3ea90d9e8aa45aada12c791181f0a  fixtures/pg-core-0.6.4-tampered/stream-spoofed.bin
+fe2a675b0a0ba0bff526cbbf3fb2528be99cdb6422ca29bf9290e7cb89e41687  fixtures/pg-core-0.6.4-tampered/stream.bin
+c8497e33e987d87fdd1692e5266b8d104dd2f2b9fb83ad6f13f4178ec35b17a6  fixtures/pg-core-0.6.4-tampered/usk.json
+3e92940b8d8cf5f88a031766a37b517f157666d5c4a7110d4bae7bd65ea4b18c  fixtures/pg-core-0.6.4-tampered/vk.json
 e08256205f143fbbc3dfd9311e2717e3bfed000d5fe92eb1f853e75270481dbd  fixtures/pg-core-0.6.4/mem-privsig.bin
 016d73f891f8eea4db023b19edd5769228065f96e4b828d335f5a1f4f6950291  fixtures/pg-core-0.6.4/mem.bin
 5246d47367eb4b5c0b3611556c4779807c157b966f547607de4b2c1ea4ee2265  fixtures/pg-core-0.6.4/meta.json

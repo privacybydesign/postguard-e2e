@@ -19,7 +19,13 @@ import { dirname, join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { fixtureSets, isCorpusPath, loadSet, SUPPORTED_SCHEMA_VERSIONS } from './corpus.mjs';
+import {
+  fixtureSets,
+  isCorpusPath,
+  loadSet,
+  SUPPORTED_SCHEMA_VERSIONS,
+  TAMPER_KINDS,
+} from './corpus.mjs';
 
 const FIXTURES = dirname(fileURLToPath(import.meta.url));
 
@@ -63,6 +69,7 @@ describe('the committed corpus', () => {
       'fixtures/gen-0-6-4/Cargo.toml',
       'fixtures/gen-0-6-4/Cargo.lock',
       'fixtures/corpus.test.mjs',
+      'fixtures/verify.test.mjs',
     ]) {
       assert.equal(isCorpusPath(tooling), false, tooling);
     }
@@ -109,5 +116,67 @@ describe('an unsupported schema', () => {
     const corpus = await corpusWith('writer-9.9.9', schema3);
     assert.equal(corpus.loadSet('writer-9.9.9').meta.schemaVersion, 3);
     assert.equal(corpus.loadSet('writer-9.9.9').containers.length, 1);
+  });
+
+  /** The same set, plus one container carrying the given tamper block. */
+  const withTamper = (tampered) => ({
+    ...schema3,
+    containers: [
+      ...schema3.containers,
+      { file: 'mem-spoofed.bin', mode: 'memory', plaintextB64: 'aGk=', tampered },
+    ],
+  });
+
+  it('is what an unknown tamper kind is: refused, never read as a positive', async () => {
+    // Read as a positive it would be a container the corpus asserts opens and
+    // reports a sender nobody signed for — the assertion inverted, silently.
+    const corpus = await corpusWith(
+      'writer-9.9.9',
+      withTamper({ kind: 'shaved-yak', swappedFrom: 'mem.bin', attackerEmail: 'a@b.test' })
+    );
+    assert.throws(() => corpus.loadSet('writer-9.9.9'), {
+      message: new RegExp(`unknown tamper kind shaved-yak \\(know ${TAMPER_KINDS.join(', ')}\\)`),
+    });
+  });
+
+  it('refuses a tamper whose twin the set does not declare', async () => {
+    const corpus = await corpusWith(
+      'writer-9.9.9',
+      withTamper({
+        kind: TAMPER_KINDS[0],
+        swappedFrom: 'elsewhere.bin',
+        attackerEmail: 'a@b.test',
+      })
+    );
+    assert.throws(() => corpus.loadSet('writer-9.9.9'), {
+      message: /swappedFrom names elsewhere\.bin, which this set does not declare/,
+    });
+  });
+
+  it('refuses a tamper naming itself as its twin', async () => {
+    // It resolves, which is the point: the twin is opened as a positive and
+    // every assertion is made against it, so a container that is its own twin
+    // is checked against the very bytes under suspicion.
+    const corpus = await corpusWith(
+      'writer-9.9.9',
+      withTamper({
+        kind: TAMPER_KINDS[0],
+        swappedFrom: 'mem-spoofed.bin',
+        attackerEmail: 'a@b.test',
+      })
+    );
+    assert.throws(() => corpus.loadSet('writer-9.9.9'), {
+      message: /swappedFrom names mem-spoofed\.bin, which this set does not declare as another/,
+    });
+  });
+
+  it('refuses a tamper with no claimed address', async () => {
+    const corpus = await corpusWith(
+      'writer-9.9.9',
+      withTamper({ kind: TAMPER_KINDS[0], swappedFrom: 'mem.bin' })
+    );
+    assert.throws(() => corpus.loadSet('writer-9.9.9'), {
+      message: /tampered with no attackerEmail/,
+    });
   });
 });

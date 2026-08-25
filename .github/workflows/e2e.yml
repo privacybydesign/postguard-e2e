@@ -161,6 +161,13 @@ jobs:
           PG_APPEND_ONLY_BASE: ${{ github.event.pull_request.base.sha }}
         run: npm run append-only
 
+      # No `!cancelled()` on either verify step, and that asymmetry with the
+      # append-only step above is deliberate. That step answers a question the
+      # ledger does not, so it is worth hearing even after a red ledger. These
+      # two depend on a green ledger: "the reader opened it" and "the reader
+      # rejected it" say nothing about bytes whose provenance is already in
+      # doubt, so running them on an unverified corpus would only produce a
+      # verdict nobody should trust.
       - name: Verify the corpus with the published JS readers
         working-directory: postguard-e2e/fixtures
         run: npm run verify

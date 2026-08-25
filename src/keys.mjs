@@ -31,9 +31,18 @@ import { fixtureSets, loadSet } from '../fixtures/corpus.mjs';
  * its key universe also needs the master public key and the sender signing
  * keys. The set generated from the live stack carries no `signkey.json` —
  * nothing can sign as its sender any more — so it is readable-only.
+ *
+ * A set holding the expected-failure class is readable-only too, whatever it
+ * carries: its key universe is the positive set's byte for byte, so the only
+ * thing sealing into it would change is which directory the sweep names for an
+ * artifact that has nothing to do with the tamper.
  */
 function isSealable(set) {
-  return existsSync(join(set.dir, 'signkey.json')) && existsSync(join(set.dir, 'mpk.json'));
+  return (
+    !set.containers.some((container) => container.tampered) &&
+    existsSync(join(set.dir, 'signkey.json')) &&
+    existsSync(join(set.dir, 'mpk.json'))
+  );
 }
 
 /** Every fixture set the decrypt legs could seal a fresh artifact into. */
@@ -67,8 +76,9 @@ export function pickUniverse(name) {
     const set = loadSet(name);
     if (!isSealable(set)) {
       throw new Error(
-        `fixture set ${name} has no signkey.json/mpk.json, so nothing can seal into its key ` +
-          `universe — sealable sets: ${sealable.map((s) => s.name).join(', ') || 'none'}`
+        `nothing can seal into fixture set ${name}: a set with no signkey.json/mpk.json has ` +
+          'nothing left to sign as its sender, and one holding tampered containers exists to be ' +
+          `read rather than written into — sealable sets: ${sealable.map((s) => s.name).join(', ') || 'none'}`
       );
     }
     return describe(set);
