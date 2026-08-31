@@ -6,6 +6,7 @@
   "description": "Cross-repo version drift detector for PostGuard (EPIC #201, Phase 3).",
   "scripts": {
     "check": "node check-versions.mjs",
+    "check-readers": "node check-reader-rows.mjs",
     "bump": "node bump-manifest.mjs",
     "test": "node --test"
   },
