@@ -105,3 +105,32 @@ jobs:
               --body "$body" \
               --reviewer rubenhensen
           fi
+
+  # Is postguard's reader list still current? (issue #50)
+  #
+  # COMPATIBILITY.md over there pins the reader versions its compat gates
+  # install. A producer publishing a new patch makes a row stale, and postguard
+  # has no scheduled workflow to notice. Separate job, not a step in `bump`:
+  # this one reads only, needs no write permission, and its red means "another
+  # repo's document needs an edit" rather than "a PR is waiting here".
+  reader-rows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Check postguard's reader rows against the registries
+        working-directory: compat
+        env:
+          # postguard is public, so this only raises the API rate limit.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run check-readers
