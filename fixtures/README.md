@@ -45,9 +45,14 @@ it. What it is never is a reason to delete a fixture.
 
 One directory per pinned **published writer**. Published, because the corpus
 only means something if the bytes are what a released client really produced;
-HEAD-sealed bytes are the forward direction and belong to
-[#25](https://github.com/encryption4all/postguard-e2e/issues/25) and to
-postguard's own `wire-compat-rust` gate.
+HEAD-sealed bytes are the forward direction, and they are gated in postguard
+rather than here: `pg-compat` opens them with published crates.io `pg-core`
+releases and `pg-compat-js` with the published npm readers, aggregated as the
+required `Wire compat` check. [#25](https://github.com/encryption4all/postguard-e2e/issues/25)
+proposed hosting that job here and exposing it by `workflow_call`; it closed
+superseded — the gate went where the sealer and the sample set already live, so
+it runs on the pull request that changes the wire rather than on a schedule in
+another repo.
 
 | Set | Writer | Containers | Sealed |
 |---|---|---|---|

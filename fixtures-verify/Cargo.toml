@@ -9,6 +9,14 @@ description = "Verifies the committed crypto-compat fixtures against the CURRENT
 # The sibling checkout — deliberately the working tree / current main, so a
 # wire-format-breaking change in pg-core turns this red while the fixtures
 # (sealed by the published client) stay fixed.
+#
+# Running this against a patched pg-core locally: cargo canonicalizes the
+# manifest's own directory before resolving this relative path, so if the
+# postguard-e2e checkout is reached through a SYMLINK the `../..` climbs out of
+# the real parent instead of the symlinked one, and this silently builds a
+# different pg-core than the one you edited — reporting green for a tree you
+# never tested. Check with `cargo tree -p pg-core`, which prints the path it
+# actually resolved, before believing a verdict.
 pg-core = { path = "../../postguard/pg-core", features = ["rust", "stream"] }
 serde = "1"
 serde_json = "1"
