@@ -87,13 +87,39 @@ Bumps go to stdout as `pkg: from -> to`, one per line, for the PR body, followed
 by a line per coupled pin the run carried along; status and skips go to stderr.
 Nothing to bump means no output and no rewrite.
 
-The Rust `irmaLib.current` is not auto-bumped: crates.io is not wired up, and
-that version moves with a deliberate migration rather than a release.
+The Rust `irmaLib.current` is not auto-bumped: the crates.io lookup added for
+the reader-row watch below is not wired into `registryOf`, and that version
+moves with a deliberate migration rather than a release.
+
+## The reader-row watch
+
+`check-reader-rows.mjs` asks a different question, about a different repo:
+`COMPATIBILITY.md` in `encryption4all/postguard` carries a fenced block of
+reader rows — the highest published patch of each line in the support window —
+and the compat gates there install exactly those versions. A producer
+publishing a new patch makes a row stale, and nothing in `postguard` notices,
+since it has no scheduled workflow.
+
+```bash
+cd compat && npm run check-readers
+```
+
+Highest *in line*, not highest overall: with `pg-core` 0.6.5 published, the row
+pinning 0.5.10 is current, because 0.5 is a supported line of its own. A row
+whose registry has no backend, or whose lookup fails, is a problem rather than a
+skip — a check that quietly stops watching a package reports green forever.
+
+It stays a separate entry point from `check-versions.mjs` on purpose. "The
+reader rows are stale" and "a consumer repo drifted" are statements about
+different repos, and folding them into one exit code lets either mask the other.
 
 ## Run it
 
 ```bash
 cd compat && npm ci && npm test && npm run check
+cd compat && npm run check-readers   # red today: a reader row in postguard is stale
+# Two commands, not one chain: `&&` would let a red `check` hide the reader-row
+# verdict, which is the masking the section above argues against.
 # GH_TOKEN / GITHUB_TOKEN raises the GitHub rate limit (and reads private repos)
 ```
 

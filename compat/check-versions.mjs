@@ -14,26 +14,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import semver from 'semver';
-import { latestFor, packageName } from './registries.mjs';
+import { ghFile, latestFor, packageName } from './registries.mjs';
 import { classifyEntry } from './bump-manifest.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '';
-
-async function ghFile(repo, path) {
-  const res = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
-    headers: {
-      Accept: 'application/vnd.github.raw',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-  if (!res.ok) {
-    const err = new Error(`GitHub ${repo}/${path}: ${res.status}`);
-    err.status = res.status;
-    throw err;
-  }
-  return res.text();
-}
 
 /**
  * How an unreadable manifest is reported. Always a problem — an entry whose
