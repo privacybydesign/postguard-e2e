@@ -116,7 +116,10 @@ different repos, and folding them into one exit code lets either mask the other.
 ## Run it
 
 ```bash
-cd compat && npm ci && npm test && npm run check && npm run check-readers
+cd compat && npm ci && npm test && npm run check
+cd compat && npm run check-readers   # red today: a reader row in postguard is stale
+# Two commands, not one chain: `&&` would let a red `check` hide the reader-row
+# verdict, which is the masking the section above argues against.
 # GH_TOKEN / GITHUB_TOKEN raises the GitHub rate limit (and reads private repos)
 ```
 
