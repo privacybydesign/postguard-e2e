@@ -10,6 +10,12 @@
 //! base branch tip: a branch that is merely behind `main` must not be told it
 //! deleted the fixtures someone else added in the meantime.
 //!
+//! That reduction is also what lets one caller serve two differently-shaped CI
+//! events (issue #37). On a pull request the ref is the PR's base commit; on a
+//! push to `main` it is the previous tip of `main`, which a fast-forward push
+//! makes an ancestor of HEAD — so the merge base is that tip and the diff is
+//! exactly the pushed range. Neither caller has to know it is a merge base.
+//!
 //! Two things are protected, and they need each other:
 //!
 //! 1. every corpus file — a modification or deletion is a violation;
@@ -118,8 +124,13 @@ function main() {
   } catch (e) {
     console.error(
       `cannot find the merge base of ${baseRef} and HEAD: ${e.message.trim()}\n` +
-        'A shallow clone has no common ancestor to compare against, so the gate would pass ' +
-        'without checking anything. Fetch the base ref (actions/checkout fetch-depth: 0).'
+        'The gate cannot compare anything without one, so it fails instead of passing. Two ' +
+        'causes, and they need different fixes:\n' +
+        '  - a shallow clone, which has no common ancestor at all: fetch the full history ' +
+        '(actions/checkout fetch-depth: 0);\n' +
+        '  - a base commit that is not in the repository, which on a push means the ref was ' +
+        'force-pushed and the previous tip is now unreachable. Nothing to fetch; re-run the ' +
+        "ledger against the corpus and confirm by hand that the force-push didn't drop a fixture."
     );
     process.exitCode = 1;
     return;
