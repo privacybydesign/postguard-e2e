@@ -220,6 +220,72 @@ describe('the gate, run for real against a git repository', () => {
     assert.match(appendOnly.output, /cannot find the merge base/);
   });
 
+  // The push-shaped call (issue #37). CI hands this gate a base commit from two
+  // differently-shaped events: a PR's `base.sha`, and a push's `before`. The
+  // tests above all model the PR shape — mutations on a side branch. These
+  // three model the push: the mutation lands on `main` itself, because a direct
+  // push is the case where no pull request ever existed to diff against.
+  it('catches a coordinated fixture and ledger edit pushed straight to main', () => {
+    const { repo, git, base } = repoWithCorpus();
+    // Back to main: a direct push has no side branch, which is the whole reason
+    // the merge-base half of the gate used to be skipped for it.
+    git('checkout', '-q', 'main');
+    writeFileSync(join(repo, 'fixtures', 'writer-1.0.0', 'mem.bin'), 'tampered bytes');
+    run(repo, 'ledger.mjs', ['--write']); // the cover-up
+    git('add', '-A');
+    git('commit', '-qm', 'edit a fixture and its digest, straight on main');
+
+    // Self-consistent again, so the nightly ledger would have reported green:
+    // this is the 24-hour hole #37 closes, not a hypothetical one.
+    const ledger = run(repo, 'ledger.mjs');
+    assert.equal(ledger.code, 0, ledger.output);
+
+    // `base` is the previous tip of main — exactly what github.event.before
+    // carries on a push.
+    const appendOnly = run(repo, 'append-only.mjs', [base]);
+    assert.equal(appendOnly.code, 1, appendOnly.output);
+    assert.match(appendOnly.output, /writer-1\.0\.0\/mem\.bin: modified/);
+    assert.match(appendOnly.output, /ledger digest was rewritten/);
+
+    // And the property that makes one env var correct for both events: on a
+    // fast-forward push the previous tip IS the merge base, so the diff is
+    // exactly the pushed range rather than something wider.
+    assert.match(appendOnly.output, new RegExp(`merge base ${base.slice(0, 12)}`));
+  });
+
+  it('still catches a deletion when the base is not an ancestor (force-push)', () => {
+    const { repo, git } = repoWithCorpus();
+    // A commit that a force-push would orphan: reachable, but not an ancestor
+    // of the history that replaces it.
+    writeFileSync(join(repo, 'fixtures', 'verify.mjs'), '// the replaced tip\n');
+    git('add', '-A');
+    git('commit', '-qm', 'the tip a force-push discarded');
+    const orphaned = git('rev-parse', 'HEAD').trim();
+
+    git('checkout', '-q', 'main');
+    rmSync(join(repo, 'fixtures', 'writer-1.0.0', 'stream.bin'));
+    git('add', '-A');
+    git('commit', '-qm', 'rewritten history, minus a fixture');
+
+    // merge-base walks back to the fork point instead, so the diff is wider
+    // than the push — but a dropped fixture is still a violation, which is the
+    // only property that has to hold here.
+    const appendOnly = run(repo, 'append-only.mjs', [orphaned]);
+    assert.equal(appendOnly.code, 1, appendOnly.output);
+    assert.match(appendOnly.output, /writer-1\.0\.0\/stream\.bin: deleted/);
+  });
+
+  it('names the force-push case when the base commit is gone', () => {
+    const { repo } = repoWithCorpus();
+    // Forty zeros is not an invented input: it is literally what
+    // github.event.before carries when a ref is created, and it is the shape a
+    // force-pushed-away tip degrades to once it is unreachable.
+    const appendOnly = run(repo, 'append-only.mjs', ['0'.repeat(40)]);
+    assert.equal(appendOnly.code, 1, appendOnly.output);
+    assert.match(appendOnly.output, /cannot find the merge base/);
+    assert.match(appendOnly.output, /force-pushed/);
+  });
+
   it('rejects a malformed ledger rather than reading past it', () => {
     const { repo } = repoWithCorpus();
     writeFileSync(join(repo, 'fixtures', 'CORPUS.sha256'), 'not a digest line\n');

@@ -4,6 +4,9 @@
 # phone and no browser. Triggers:
 #   - schedule:        nightly
 #   - pull_request:    on this repo when the harness/stack change
+#   - push (main):     on a fixtures/** change, so the append-only gate runs
+#                      against a direct push instead of waiting for the nightly
+#                      ledger (issue #37)
 #   - workflow_dispatch: manual
 #   - workflow_call:   so other repos can gate on it, e.g.
 #       jobs:
@@ -20,6 +23,22 @@ on:
   workflow_call:
   schedule:
     - cron: '0 3 * * *' # 03:00 UTC nightly
+  # A direct push to `main` never opens a pull request, so the merge-base half
+  # of the append-only gate below used to be skipped entirely and a deleted or
+  # rewritten fixture was caught only whenever the nightly ledger next ran — up
+  # to 24 hours late (issue #37). The path filter is narrower than the
+  # pull_request one on purpose: this trigger exists for the corpus gates, and
+  # `fixtures/**` covers both the artifacts and `CORPUS.sha256`.
+  #
+  # The other three jobs run too, which duplicates them on the normal merge
+  # path. That is deliberate and cheap: an append-only corpus changes a handful
+  # of times a year, the nightly already runs golden-flow every night, and on
+  # the runs this trigger exists for — a push that bypassed review — nothing is
+  # duplicated because no PR checks ever ran.
+  push:
+    branches: [main]
+    paths:
+      - 'fixtures/**'
   pull_request:
     paths:
       - 'yivi-driver/**'
@@ -108,8 +127,9 @@ jobs:
         uses: actions/checkout@v7
         with:
           path: postguard-e2e
-          # Full history: the append-only gate compares HEAD against the merge
-          # base with the PR's target branch, and a shallow clone has no common
+          # Full history: the append-only gate compares HEAD against a merge
+          # base — with the PR's target branch on a pull_request, with the
+          # previous tip of `main` on a push — and a shallow clone has no common
           # ancestor to compare against. The gate fails rather than passing
           # when it cannot find one, so a regression here goes red, not quiet.
           fetch-depth: 0
@@ -144,21 +164,36 @@ jobs:
         run: npm run ledger
 
       # The other half: the ledger says the bytes match what was recorded, this
-      # says the recording itself was only ever appended to. Pull requests only
-      # — it is the one check that needs a merge base.
+      # says the recording itself was only ever appended to. It is the one check
+      # that needs a base commit, so it runs on the two events that have one —
+      # pull_request and push. On `schedule` and `workflow_dispatch` there is no
+      # "before" to compare against and the ledger stands alone.
       #
       # `!cancelled()` so it still reports when the ledger step above already
       # failed. The two gates answer different questions and a tampered corpus
       # trips both; short-circuiting would mean the second one's verdict is
       # never seen precisely on the runs it exists for.
       - name: Enforce that the corpus is append-only
-        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'push') }}
         working-directory: postguard-e2e/fixtures
         env:
-          # The base commit itself, not the branch name: actions/checkout builds
-          # the PR's merge commit, so this is exactly its first parent and no
-          # extra fetch is needed.
-          PG_APPEND_ONLY_BASE: ${{ github.event.pull_request.base.sha }}
+          # A base COMMIT, not a branch name, on both events — and note the gate
+          # reduces whatever it is handed with `git merge-base <ref> HEAD`, which
+          # is what makes one env var correct for two differently-shaped events:
+          #
+          #   pull_request: actions/checkout builds the PR's merge commit, so
+          #     base.sha is exactly its first parent — no extra fetch needed.
+          #   push: `before` is the previous tip of `main`. A fast-forward push
+          #     makes it an ancestor of HEAD, so the merge base IS `before` and
+          #     the diff is exactly the pushed range — for a squash, a merge
+          #     commit or a rebase alike.
+          #
+          # A force-push is the one case where `before` is not an ancestor. Then
+          # the merge base walks back to the fork point: a noisier diff, but a
+          # deleted or rewritten fixture is still caught. If the old tip is
+          # unreachable altogether, merge-base fails and the gate exits non-zero
+          # rather than passing — see append-only.mjs, which names this case.
+          PG_APPEND_ONLY_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: npm run append-only
 
       # No `!cancelled()` on either verify step, and that asymmetry with the
