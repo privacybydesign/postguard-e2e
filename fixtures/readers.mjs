@@ -55,6 +55,29 @@ import { REPO_ROOT } from './corpus.mjs';
 /** The refusal `pg-js` answers a memory-mode container with. */
 export const PG_JS_MEMORY_REFUSAL = /mode is not supported: InMemory/;
 
+/**
+ * What `pg-js` answers a rejected tampered container with, which is *not* what
+ * the wasm under it raises.
+ *
+ * pg-core raises `IncorrectSignature` and pg-js surfaces
+ * `IdentityMismatchError: Identity mismatch: the Yivi attributes did not match
+ * the encryption policy.` — a sender-signature failure reported as a
+ * *recipient*-attribute one. Measured, not inferred: the same container through
+ * the nested `@e4a/pg-wasm` 0.6.5 directly throws `incorrect signature`.
+ *
+ * The corpus records what the reader does, so this is the pattern to match. But
+ * the mislabelling is a real defect for a consumer — it points a developer at
+ * the recipient's disclosure when the sender's signature is what failed — and
+ * it is filed rather than papered over here.
+ *
+ * Matching it is weaker as a discriminator than `incorrect signature`, since a
+ * genuine attribute mismatch says the same thing. The four assertions
+ * `runTamperedCase` makes around it are what carry the weight: the good twin
+ * opens, the header parses, it claims the attacker, and it no longer claims the
+ * real sender. Only then is this message asked for.
+ */
+export const PG_JS_IDENTITY_MISMATCH = /identity mismatch/i;
+
 /** The package both wasm readers are, whichever specifier resolves them. */
 const PG_WASM_PACKAGE = '@e4a/pg-wasm';
 
@@ -71,8 +94,13 @@ const PG_WASM_PACKAGE = '@e4a/pg-wasm';
 const INCORRECT_SIGNATURE = /incorrect signature/i;
 
 /**
- * Why the two pre-fix readers refuse a `respelled-sender` container outright,
+ * Why the pre-fix reader refuses a `respelled-sender` container outright,
  * which is *not* the tamper check finding anything.
+ *
+ * One reader, not two, since pg-js 2.5.0: it declared `^0.6.5` and stopped
+ * deduping onto this pin, so it reads through a wasm that postdates both
+ * canonicalization and the fix. `@e4a/pg-wasm 0.6.1` is the only reader left
+ * that predates them.
  *
  * Canonicalization landed in the same release as the fix
  * ([postguard#335](https://github.com/encryption4all/postguard/issues/335)), so
@@ -267,11 +295,41 @@ const pgJs = {
       'writes a memory-mode container; @e4a/pg-wasm covers those cases',
   },
   // Whichever `@e4a/pg-wasm` the current pg-js resolves onto does the container
-  // work, so this reader inherits that copy's answers. The refusal below
-  // arrives ahead of the memory-mode one, because the header signature is
-  // checked before the mode is.
+  // work, so this reader inherits that copy's answers — and which copy that is
+  // changed under it. Through 2.4.0 pg-js declared `^0.6.1` and npm deduped it
+  // onto the top-level pin, so it read through a wasm predating both the fix
+  // (postguard#347) and canonicalization (postguard#335): it opened a
+  // swapped-signer container and reported the attacker as verified, and it
+  // refused a respelled one at the header because the signature over
+  // as-written policy bytes did not verify. 2.5.0 moved the range to `^0.6.5`
+  // for `signChallenge`, which no longer dedupes, so npm nests its own 0.6.5
+  // and both of those answers inverted at once. Measured on 0.6.1 vs 0.6.5:
+  //
+  //   0.6.1  stream-spoofed  header claims attacker@golden.test; unseal OK
+  //          mem-respelled   refused at the header: incorrect signature
+  //   0.6.5  stream-spoofed  header claims attacker@golden.test; unseal refused
+  //          mem-respelled   header claims Sender@Golden.TEST;   unseal refused
+  //
+  // So this reader now answers like `pg-wasm-0-6-4` below: the header parses in
+  // both cases and unseal is where it stops. A range bump for an unrelated
+  // feature is what carried a security fix into this reader.
   rejectsTampered: {
-    'respelled-sender': RESPELL_REFUSED_AT_HEADER,
+    'swapped-signer': {
+      stage: 'unseal',
+      refusal: PG_JS_IDENTITY_MISMATCH,
+      why:
+        'the resolved wasm carries the AEAD-protected copy of the sender\'s public signing ' +
+        'policy (postguard#347), so the swapped header block parses and unseal is where it ' +
+        'stops — reported through pg-js as an identity mismatch, see PG_JS_IDENTITY_MISMATCH',
+    },
+    'respelled-sender': {
+      stage: 'unseal',
+      refusal: PG_JS_IDENTITY_MISMATCH,
+      why:
+        'canonicalization (postguard#335) derives the same signer from a respelled policy, so ' +
+        'the header signature verifies and the byte-equality check under the AEAD is what ' +
+        'refuses it — the same split `pg-wasm-0-6-4` records, one release later',
+    },
   },
 
   async load({ set }) {
