@@ -4,9 +4,9 @@
 // removed (postguard#419). The pins this repo ignores are compat/manifest.json
 // and the COUPLED_PINS it moves in lockstep (compat/bump-manifest.mjs),
 // fixtures/package.json's deliberately-uncoupled @e4a/pg-wasm pin, and the
-// corpus writer crates' append-only pg-core pins under fixtures-verify — a
-// Renovate bump on any of those silently undoes a compat gate rather than
-// failing loudly.
+// corpus writer crates' append-only pg-core pins under fixtures/gen and
+// fixtures/gen-0-6-4 — a Renovate bump on any of those silently undoes a
+// compat gate rather than failing loudly.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -17,7 +17,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const configPath = join(repoRoot, 'renovate.json');
 
 const PRESET = 'github>encryption4all/renovate-config';
-const IGNORED_PATHS = ['compat/**', 'fixtures/**', 'fixtures-verify/**'];
+const IGNORED_PATHS = ['compat/**', 'fixtures/**'];
 const IGNORED_PACKAGES = ['@e4a/**', 'pg-core', 'pg-wasm'];
 
 const config = () => JSON.parse(readFileSync(configPath, 'utf8'));
