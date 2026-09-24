@@ -12,8 +12,8 @@
     "still a `workspace:` link rather than which version the range resolves."
   ],
   "sdk": {
-    "pg-js": { "npm": "@e4a/pg-js", "current": "2.5.0" },
-    "pg-wasm": { "npm": "@e4a/pg-wasm", "current": "0.6.7" },
+    "pg-js": { "npm": "@e4a/pg-js", "current": "2.6.0" },
+    "pg-wasm": { "npm": "@e4a/pg-wasm", "current": "0.6.10" },
     "pg-dotnet": { "nuget": "E4A.PostGuard", "current": "0.6.0" }
   },
   "sdkConsumers": [
