@@ -12,7 +12,7 @@
     "test": "node --test \"*.test.mjs\""
   },
   "dependencies": {
-    "@e4a/pg-js": "2.5.0",
+    "@e4a/pg-js": "2.6.0",
     "@e4a/pg-wasm": "0.6.1",
     "pg-wasm-0-6-4": "npm:@e4a/pg-wasm@0.6.4"
   }
