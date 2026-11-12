@@ -19,21 +19,21 @@
   "sdkConsumers": [
     {
       "name": "postguard-website",
-      "repo": "encryption4all/postguard-js",
+      "repo": "privacybydesign/postguard-js",
       "manifest": "apps/website/package.json",
       "dep": "@e4a/pg-js",
       "expect": "workspace"
     },
     {
       "name": "postguard-tb-addon",
-      "repo": "encryption4all/postguard-js",
+      "repo": "privacybydesign/postguard-js",
       "manifest": "apps/tb-addon/package.json",
       "dep": "@e4a/pg-js",
       "expect": "workspace"
     },
     {
       "name": "postguard-outlook-addon",
-      "repo": "encryption4all/postguard-js",
+      "repo": "privacybydesign/postguard-js",
       "manifest": "apps/outlook-addon/package.json",
       "dep": "@e4a/pg-js",
       "expect": "workspace"
@@ -46,7 +46,7 @@
       "consumers": [
         {
           "name": "postguard (pg-pkg)",
-          "repo": "encryption4all/postguard",
+          "repo": "privacybydesign/postguard",
           "manifest": "pg-pkg/Cargo.toml"
         }
       ]

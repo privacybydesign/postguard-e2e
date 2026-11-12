@@ -1,6 +1,6 @@
 // Are postguard's reader rows still current against the registries? (issue #50)
 //
-// COMPATIBILITY.md in encryption4all/postguard carries a fenced block of reader
+// COMPATIBILITY.md in privacybydesign/postguard carries a fenced block of reader
 // rows — "the highest published patch of each line in the support window" — and
 // the compat gates in that repo install exactly those versions. A producer
 // publishing a new patch makes a row stale, and nothing in postguard notices:
@@ -18,7 +18,7 @@
 import { fileURLToPath } from 'node:url';
 import { cratesVersions, ghFile, highestInLine, npmVersions } from './registries.mjs';
 
-const SOURCE = { repo: 'encryption4all/postguard', path: 'COMPATIBILITY.md' };
+const SOURCE = { repo: 'privacybydesign/postguard', path: 'COMPATIBILITY.md' };
 
 // The block's own first line, which is how it is found among the other fenced
 // blocks in that document.

@@ -35,21 +35,21 @@ read the same set.
 
 ## Repos to weigh before changing this one
 
-- `encryption4all/postguard` — the root of the family: `pg-core`, the PKG
+- `privacybydesign/postguard` — the root of the family: `pg-core`, the PKG
   server, and `cryptify/`. `stack/` builds the PKG from a sibling checkout of
   it, unpinned on purpose. Its `COMPATIBILITY.md` is what the sweep's support
   windows are measured against. Cryptify is the exception: `stack/` builds it
   from its own `../../cryptify` checkout, a snapshot of a repo that is now
   archived, so an edit to `postguard/cryptify` does not reach this stack.
-- `encryption4all/postguard-js`, `encryption4all/postguard-dotnet` — the two
+- `privacybydesign/postguard-js`, `encryption4all/postguard-dotnet` — the two
   clients the sweep installs from npm and NuGet. A version the support matrix
   declares supported is a promise those repos have to keep.
-- `encryption4all/postguard-business` — owns the `business-db` schema. `stack/`
+- `privacybydesign/postguard-business` — owns the `business-db` schema. `stack/`
   applies its real migrations; asserting against a schema written here instead
   is the regression postguard#237 was about.
 - `privacybydesign/irmago` — `yivi-driver` builds against it through a `go.mod`
   replace on a sibling checkout, pinned by sha in `.github/workflows/e2e.yml`.
-- `encryption4all/postguard-docs` — `docs.postguard.eu`. Documentation for this
+- `privacybydesign/postguard-docs` — `docs.postguard.eu`. Documentation for this
   repo belongs there, not in this file.
 
 ## Where the rest of this file went

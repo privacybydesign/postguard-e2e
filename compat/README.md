@@ -18,7 +18,7 @@ in production.
 - **SDK consumers** — an external repo's declared `@e4a/pg-js` range must
   resolve the current published version (`semver.satisfies`).
 - **Monorepo members** — an entry marked `"expect": "workspace"` lives in
-  `encryption4all/postguard-js`. Its dep is a `workspace:` link, which cannot
+  `privacybydesign/postguard-js`. Its dep is a `workspace:` link, which cannot
   drift, so the range question is meaningless; the check asserts the link is
   *still* there. A member that regresses to a fixed pin
   (`"@e4a/pg-js": "2.3.4"`) reintroduces exactly the drift the consolidation
@@ -94,7 +94,7 @@ moves with a deliberate migration rather than a release.
 ## The reader-row watch
 
 `check-reader-rows.mjs` asks a different question, about a different repo:
-`COMPATIBILITY.md` in `encryption4all/postguard` carries a fenced block of
+`COMPATIBILITY.md` in `privacybydesign/postguard` carries a fenced block of
 reader rows — the highest published patch of each line in the support window —
 and the compat gates there install exactly those versions. A producer
 publishing a new patch makes a row stale, and nothing in `postguard` notices,
@@ -132,5 +132,5 @@ cd compat && npm run check-readers   # red today: a reader row in postguard is s
 - A new shared component or consumer appears → add it here.
 - A consumer moved into the postguard-js monorepo → point `repo`/`manifest` at
   its path in the monorepo and add `"expect": "workspace"`. The next one is
-  `postguard-outlook-addon` (encryption4all/postguard-js#127), at which point its
+  `postguard-outlook-addon` (privacybydesign/postguard-js#127), at which point its
   `knownDrift` entry goes away with the same edit.
