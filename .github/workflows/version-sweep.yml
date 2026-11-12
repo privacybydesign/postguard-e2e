@@ -84,7 +84,7 @@ jobs:
   # definition, the gate contract and the version filters were unguarded.
   unit:
     if: github.event_name == 'pull_request' && !inputs.profile
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -96,7 +96,7 @@ jobs:
 
   sweep:
     if: github.event_name != 'pull_request' || inputs.profile
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 45
     env:
       # A schedule carries no inputs, so the nightly's profile is named here.
