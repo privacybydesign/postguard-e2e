@@ -1,9 +1,9 @@
 # The container corpus
 
 Golden ciphertexts pinning PostGuard's **wire format across time** (EPIC
-[#206](https://github.com/encryption4all/postguard/issues/206), corpus in
-[#19](https://github.com/encryption4all/postguard-e2e/issues/19) /
-[#23](https://github.com/encryption4all/postguard-e2e/issues/23)). The rest of
+[#206](https://github.com/privacybydesign/postguard/issues/206), corpus in
+[#19](https://github.com/privacybydesign/postguard-e2e/issues/19) /
+[#23](https://github.com/privacybydesign/postguard-e2e/issues/23)). The rest of
 the harness tests HEAD against HEAD; this is the time axis. A container sealed
 **today** — like every encrypted email and file already in the wild — must open
 **forever**, until a format break is made deliberately and versioned.
@@ -48,7 +48,7 @@ only means something if the bytes are what a released client really produced;
 HEAD-sealed bytes are the forward direction, and they are gated in postguard
 rather than here: `pg-compat` opens them with published crates.io `pg-core`
 releases and `pg-compat-js` with the published npm readers, aggregated as the
-required `Wire compat` check. [#25](https://github.com/encryption4all/postguard-e2e/issues/25)
+required `Wire compat` check. [#25](https://github.com/privacybydesign/postguard-e2e/issues/25)
 proposed hosting that job here and exposing it by `workflow_call`; it closed
 superseded — the gate went where the sealer and the sample set already live, so
 it runs on the pull request that changes the wire rather than on a schedule in
@@ -69,11 +69,11 @@ sensible list of writers to *archive*.
 
 0.6.4 is in the corpus for a different reason. It is the first release that
 writes the AEAD-protected copy of the sender's public signing policy
-([postguard#347](https://github.com/encryption4all/postguard/issues/347)), so it
+([postguard#347](https://github.com/privacybydesign/postguard/issues/347)), so it
 is the first writer here that seals containers in that format; before this set
 the archival guarantee said nothing about it. 0.6.4 also canonicalizes identity
 attribute values before deriving
-([postguard#335](https://github.com/encryption4all/postguard/issues/335)), but
+([postguard#335](https://github.com/privacybydesign/postguard/issues/335)), but
 every attribute value in this set is already canonical — `mpk.json`, `vk.json`,
 `usk.json` and `signkey.json` are byte-identical to the 0.5.10 and 0.6.1 sets,
 which is the evidence that no derivation moved — so the set pins the `pub_pol`
@@ -87,7 +87,7 @@ postguard#347 says it should, and this set is where that keeps being checked.
 **refuse**. Each keeps its twin's preamble, header and payload byte
 for byte and replaces only the header signature block, with one made over the
 same header bytes by another signing key carrying that key's policy — the attack
-[postguard#347](https://github.com/encryption4all/postguard/issues/347) is about.
+[postguard#347](https://github.com/privacybydesign/postguard/issues/347) is about.
 `pg-core`'s own `swap_header_signature` is the reference implementation.
 
 | Container | Twin | Kind | What it claims |
@@ -123,7 +123,7 @@ pins do.
 
 Both container modes are covered because they are different wire formats, and
 this is the seam behind
-[postguard#127](https://github.com/encryption4all/postguard/issues/127):
+[postguard#127](https://github.com/privacybydesign/postguard/issues/127):
 
 - **memory** (`Sealer<_, SealerMemoryConfig>::seal`, pg-wasm `seal()`, what
   pg-js `toBytes()` callers *think* they get)
@@ -216,7 +216,7 @@ with the real sender surfacing as a *private* policy. That is the blast radius
 of the bug written down, and it turns a future pin bump into a visible failure
 rather than a silent change. Both also refuse `mem-respelled.bin` outright,
 which is not the tamper check finding anything: they predate canonicalization
-([postguard#335](https://github.com/encryption4all/postguard/issues/335)) and so
+([postguard#335](https://github.com/privacybydesign/postguard/issues/335)) and so
 cannot derive the signer identity from a respelled policy at all. That reason is
 recorded beside the refusal, so it is not read as the fix being present.
 
@@ -302,8 +302,8 @@ will say so.
 ## Wanted
 
 - `E4A.PostGuard` (.NET) — unblocked by
-  [postguard#236](https://github.com/encryption4all/postguard/issues/236) /
-  [#244](https://github.com/encryption4all/postguard/issues/244); it is the
+  [postguard#236](https://github.com/privacybydesign/postguard/issues/236) /
+  [#244](https://github.com/privacybydesign/postguard/issues/244); it is the
   writer nothing in this corpus covers.
 - Older published `@e4a/pg-wasm` lines, as the support window declares them.
 - A multi-recipient set: every container here is sealed for one recipient, so

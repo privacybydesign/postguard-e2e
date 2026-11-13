@@ -17,7 +17,7 @@
 //!   *current* one and not a pin that quietly ages out of relevance.
 //! - **`@e4a/pg-wasm` 0.6.4, pinned permanently** — the first release that
 //!   rejects a swapped header-signature block
-//!   ([postguard#347](https://github.com/encryption4all/postguard/issues/347)).
+//!   ([postguard#347](https://github.com/privacybydesign/postguard/issues/347)).
 //!   What this pin freezes is *that the fix worked as shipped*: a floating pin
 //!   would only duplicate `fixtures-verify` and would stop testing 0.6.4 the
 //!   day 0.6.5 lands. It is an npm alias rather than a second dependency
@@ -103,7 +103,7 @@ const INCORRECT_SIGNATURE = /incorrect signature/i;
  * that predates them.
  *
  * Canonicalization landed in the same release as the fix
- * ([postguard#335](https://github.com/encryption4all/postguard/issues/335)), so
+ * ([postguard#335](https://github.com/privacybydesign/postguard/issues/335)), so
  * a reader older than it derives the signer's identity from the policy bytes as
  * they stand. A respelled policy derives an identity the header signature was
  * never made for, so the signature does not verify and the container is refused

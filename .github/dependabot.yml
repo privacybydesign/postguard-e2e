@@ -1,0 +1,51 @@
+# Updates are grouped (one PR per ecosystem, plus one for its security
+# updates) and wait 7 days after a release (cooldown) so compromised releases
+# are usually yanked before they reach us. Security updates are not delayed.
+#
+# The `ignore` entries are load-bearing and src/dependabot-config.test.mjs
+# holds them: compat-bump.yml and compat/bump-manifest.mjs move
+# compat/manifest.json and the COUPLED_PINS together, fixtures/package.json's
+# @e4a/pg-wasm pin is deliberately uncoupled so it ages against the corpus, and
+# the corpus writer crates' exact pg-core pins under fixtures/gen and
+# fixtures/gen-0-6-4 are append-only history. A bot bump on any of those undoes
+# a compat gate without failing one.
+version: 2
+updates:
+  - package-ecosystem: github-actions # also bumps the shared workflows
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    groups:
+      actions: { patterns: ["*"] }
+      actions-security: { applies-to: security-updates, patterns: ["*"] }
+    cooldown: { default-days: 7 }
+
+  - package-ecosystem: npm
+    directories: ["/", "/compat", "/contracts", "/fixtures", "/yivi-driver/oracle"]
+    schedule: { interval: weekly, day: monday }
+    versioning-strategy: increase
+    ignore:
+      - dependency-name: "@e4a/*"
+    groups:
+      npm-production: { dependency-type: production, update-types: [minor, patch] }
+      npm-development: { dependency-type: development, update-types: [minor, patch] }
+      npm-security: { applies-to: security-updates, patterns: ["*"] }
+    cooldown: { default-days: 7 }
+
+  - package-ecosystem: cargo
+    directories: ["/fixtures-verify", "/fixtures/gen", "/fixtures/gen-0-6-4"]
+    schedule: { interval: weekly, day: monday }
+    ignore:
+      - dependency-name: "pg-core"
+      - dependency-name: "pg-wasm"
+    groups:
+      cargo: { patterns: ["*"], update-types: [minor, patch] }
+      cargo-security: { applies-to: security-updates, patterns: ["*"] }
+    cooldown: { default-days: 7 }
+
+  - package-ecosystem: gomod
+    directory: /yivi-driver
+    schedule: { interval: weekly, day: monday }
+    groups:
+      go: { patterns: ["*"], update-types: [minor, patch] }
+      go-security: { applies-to: security-updates, patterns: ["*"] }
+    cooldown: { default-days: 7 }

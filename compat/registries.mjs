@@ -10,7 +10,7 @@ import semver from 'semver';
 const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '';
 
 // crates.io asks a bot to identify itself and where to complain about it.
-const CRATES_USER_AGENT = 'postguard-e2e-compat (https://github.com/encryption4all/postguard-e2e)';
+const CRATES_USER_AGENT = 'postguard-e2e-compat (https://github.com/privacybydesign/postguard-e2e)';
 
 /**
  * A file's contents from a GitHub repo, as text.
