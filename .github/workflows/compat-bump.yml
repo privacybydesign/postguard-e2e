@@ -85,6 +85,8 @@ jobs:
           # Actions log, and a package silently stops being tracked.
           skips=$(grep '^  ! ' "$RUNNER_TEMP/notes.txt" || true)
 
+          # The backticks are Markdown for the PR body, not command substitution.
+          # shellcheck disable=SC2016
           body=$(
             echo 'A producer published a version newer than `compat/manifest.json` records:'
             echo
