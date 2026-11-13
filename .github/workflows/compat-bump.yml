@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   bump:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     permissions:
       contents: write
@@ -119,7 +119,7 @@ jobs:
   # this one reads only, needs no write permission, and its red means "another
   # repo's document needs an edit" rather than "a PR is waiting here".
   reader-rows:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     permissions:
       contents: read

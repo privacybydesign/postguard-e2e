@@ -58,7 +58,7 @@ jobs:
   # in compat/manifest.json. Runs on the nightly schedule too, because drift is
   # introduced by OTHER repos' changes — not just PRs here.
   compat:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -78,7 +78,7 @@ jobs:
   # Pure text checks — no builds, no native deps (gofmt doesn't compile, so
   # yivi-driver's CGO/sqlcipher requirement doesn't apply).
   fmt:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -130,7 +130,7 @@ jobs:
   # The corpus is append-only, and this job is where that is enforced: the
   # digest ledger on every event, and the merge-base diff on pull requests.
   crypto-fixtures:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
       - name: Checkout postguard-e2e
@@ -240,7 +240,7 @@ jobs:
         run: cargo run
 
   golden-flow:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 45
     steps:
       # Check everything out as siblings under $GITHUB_WORKSPACE so the
