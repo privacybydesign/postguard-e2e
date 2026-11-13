@@ -151,7 +151,7 @@ test('sdkVerdict: a registry older than the manifest stays red, since bumps only
 
 const member = {
   name: 'postguard-website',
-  repo: 'encryption4all/postguard-js',
+  repo: 'privacybydesign/postguard-js',
   manifest: 'apps/website/package.json',
   dep: '@e4a/pg-js',
   expect: 'workspace',
@@ -241,12 +241,12 @@ test('consumerVerdict: an unknown `expect` value fails instead of silently versi
 // --- A manifest path that no longer exists must fail loudly ---
 
 test('readFailureMessage: a 404 names the entry as monitoring nothing', () => {
-  const err = new Error('GitHub encryption4all/postguard-js/apps/website/package.json: 404');
+  const err = new Error('GitHub privacybydesign/postguard-js/apps/website/package.json: 404');
   err.status = 404;
   const msg = readFailureMessage(member, err);
   assert.match(msg, /does not exist \(GitHub 404\)/);
   assert.match(msg, /monitors nothing/);
-  assert.match(msg, /encryption4all\/postguard-js\/apps\/website\/package\.json/);
+  assert.match(msg, /privacybydesign\/postguard-js\/apps\/website\/package\.json/);
 });
 
 test('readFailureMessage: any other read failure still reports the cause', () => {
@@ -263,7 +263,7 @@ const consumerByName = Object.fromEntries(manifest.sdkConsumers.map((c) => [c.na
 test('manifest: the consolidated apps are read from the monorepo, not their archived repos', () => {
   // All three apps live in postguard-js now and all three source repos are
   // archived. Reading an old repo was a permanent silent-green
-  // (encryption4all/postguard-e2e#30) — and note the shape of the outlook case,
+  // (privacybydesign/postguard-e2e#30) — and note the shape of the outlook case,
   // because it is the one this test was originally written without. An archived
   // repo is read-only, not deleted, so its package.json keeps resolving: the
   // read never 404s, `readFailureMessage` never fires, and the stale ^1.10.0 pin
@@ -271,18 +271,18 @@ test('manifest: the consolidated apps are read from the monorepo, not their arch
   // repo being archived precisely because nothing about the fetch changes.
   assert.deepEqual(
     { repo: consumerByName['postguard-website'].repo, manifest: consumerByName['postguard-website'].manifest },
-    { repo: 'encryption4all/postguard-js', manifest: 'apps/website/package.json' }
+    { repo: 'privacybydesign/postguard-js', manifest: 'apps/website/package.json' }
   );
   assert.deepEqual(
     { repo: consumerByName['postguard-tb-addon'].repo, manifest: consumerByName['postguard-tb-addon'].manifest },
-    { repo: 'encryption4all/postguard-js', manifest: 'apps/tb-addon/package.json' }
+    { repo: 'privacybydesign/postguard-js', manifest: 'apps/tb-addon/package.json' }
   );
   assert.deepEqual(
     {
       repo: consumerByName['postguard-outlook-addon'].repo,
       manifest: consumerByName['postguard-outlook-addon'].manifest,
     },
-    { repo: 'encryption4all/postguard-js', manifest: 'apps/outlook-addon/package.json' }
+    { repo: 'privacybydesign/postguard-js', manifest: 'apps/outlook-addon/package.json' }
   );
   for (const name of ['postguard-website', 'postguard-tb-addon', 'postguard-outlook-addon']) {
     assert.equal(consumerByName[name].expect, 'workspace');
@@ -291,7 +291,7 @@ test('manifest: the consolidated apps are read from the monorepo, not their arch
 
 test('manifest: no sdkConsumers entry reads from an archived repository', () => {
   // The five repos folded into postguard-js / postguard and archived in
-  // encryption4all/postguard#288-#291 and #293. Archiving does not break a read,
+  // privacybydesign/postguard#288-#291 and #293. Archiving does not break a read,
   // so this has to be asserted rather than discovered.
   const archived = [
     'encryption4all/postguard-website',

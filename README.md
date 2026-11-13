@@ -3,7 +3,7 @@
 > Part of [PostGuard](https://postguard.eu) · full docs at [docs.postguard.eu](https://docs.postguard.eu)
 
 The central end-to-end test harness for PostGuard (EPIC:
-[encryption4all/postguard#201](https://github.com/encryption4all/postguard/issues/201)).
+[privacybydesign/postguard#201](https://github.com/privacybydesign/postguard/issues/201)).
 It has three parts:
 
 - **[`stack/`](stack/)** — a self-contained docker-compose stack (PKG + irma-server
@@ -23,7 +23,7 @@ Sweeps **published** versions of the PostGuard client libraries against a target
 server and reports which versions still work — so the breakage boundary is found
 before a server change is promoted, and not by a consumer afterwards. It is the
 deploy-time backstop for the PR-time wire-compat gate in
-[postguard](https://github.com/encryption4all/postguard) (issue #21).
+[postguard](https://github.com/privacybydesign/postguard) (issue #21).
 
 It installs each version of [`@e4a/pg-js`](https://www.npmjs.com/package/@e4a/pg-js)
 (npm) and [`E4A.PostGuard`](https://www.nuget.org/packages/E4A.PostGuard) (NuGet)

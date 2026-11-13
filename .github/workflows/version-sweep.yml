@@ -1,7 +1,7 @@
 # Published-SDK version sweep (issue #21).
 #
 # The deploy-time backstop for the PR-time wire-compat gate in
-# encryption4all/postguard: it takes the SDK versions the support matrix
+# privacybydesign/postguard: it takes the SDK versions the support matrix
 # declares supported (src/matrix.mjs — the last two @e4a/pg-js majors, the last
 # E4A.PostGuard major) and runs two legs against them.
 #
@@ -18,7 +18,7 @@
 #                        against candidate images it has already brought up:
 #       jobs:
 #         sweep:
-#           uses: encryption4all/postguard-e2e/.github/workflows/version-sweep.yml@main
+#           uses: privacybydesign/postguard-e2e/.github/workflows/version-sweep.yml@main
 #           with:
 #             profile: pre-deploy
 #             pkg_url: https://pkg.candidate.internal
@@ -73,10 +73,17 @@ on:
     secrets:
       api_key:
         required: false
+      # Declared so the fallback in the sweep job's env type-checks; a caller
+      # passes api_key, a direct run reads the repository secret.
+      PG_API_KEY:
+        required: false
 
 concurrency:
   group: version-sweep-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   # The harness's own tests. Until this job existed nothing under src/ ran in
@@ -87,8 +94,10 @@ jobs:
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
       - run: npm ci
@@ -108,16 +117,18 @@ jobs:
       # a leg that quietly did not run is coverage loss, not a pass.
       PG_API_KEY: ${{ secrets.api_key || secrets.PG_API_KEY }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
 
       # The .NET sandboxes target net8.0: the SDK builds them, the RUNTIME is
       # what `dotnet run` needs. Without this the sweep exits nonzero because
       # the .NET half of the support matrix was never swept at all.
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: '8.0.x'
 
@@ -149,7 +160,7 @@ jobs:
 
       - name: Upload the matrix report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: version-matrix-${{ env.PG_PROFILE }}
           path: report/matrix.*

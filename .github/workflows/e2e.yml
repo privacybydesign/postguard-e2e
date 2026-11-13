@@ -11,7 +11,7 @@
 #   - workflow_call:   so other repos can gate on it, e.g.
 #       jobs:
 #         e2e:
-#           uses: encryption4all/postguard-e2e/.github/workflows/e2e.yml@main
+#           uses: privacybydesign/postguard-e2e/.github/workflows/e2e.yml@main
 #
 # All dependencies are public (postguard, cryptify, privacybydesign/irmago), so
 # no extra checkout secret is needed. The irma-server's JWT key is generated
@@ -49,6 +49,9 @@ on:
       - 'compat/**'
       - '.github/workflows/e2e.yml'
 
+permissions:
+  contents: read
+
 jobs:
   # Cross-repo version drift detector (issue #201, Phase 3). Reads the versions
   # each PostGuard repo declares (npm + GitHub) and fails on drift not tracked
@@ -58,8 +61,10 @@ jobs:
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
       - name: Check cross-repo version drift
@@ -76,11 +81,16 @@ jobs:
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
-
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          components: rustfmt
+          persist-credentials: false
+
+      # rustup ships with the runner image; the organization only allows
+      # GitHub-owned and verified actions, so no toolchain action here.
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update --component rustfmt
+          rustup default stable
 
       - name: cargo fmt --check (fixtures-verify)
         working-directory: fixtures-verify
@@ -97,7 +107,7 @@ jobs:
         working-directory: fixtures/gen-0-6-4
         run: cargo fmt --check
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26'
           cache: false
@@ -124,8 +134,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout postguard-e2e
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           path: postguard-e2e
           # Full history: the append-only gate compares HEAD against a merge
           # base — with the PR's target branch on a pull_request, with the
@@ -136,12 +147,13 @@ jobs:
 
       # Unpinned on purpose — current pg-core is the thing under test here.
       - name: Checkout postguard (pg-core)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: encryption4all/postguard
+          persist-credentials: false
+          repository: privacybydesign/postguard
           path: postguard
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
 
@@ -214,13 +226,12 @@ jobs:
         working-directory: postguard-e2e/contracts
         run: npm ci && npm run validate
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      # Cache the cargo registry + target dir (keyed on the manifests), so
-      # the pg-core build here takes seconds on a warm cache (issue #239).
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: postguard-e2e/fixtures-verify
+      # No cargo cache: the cache action this job used is not on the
+      # organization's allowlist, so the pg-core build is cold on every run.
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
 
       # No --locked: pg-core is a path dep whose transitive versions follow
       # postguard main; pinning them here would only produce false reds.
@@ -236,8 +247,9 @@ jobs:
       # `../../…` paths in stack/docker-compose.yml and yivi-driver/go.mod
       # resolve (postguard-e2e in its own subdir, deps one level up from it).
       - name: Checkout postguard-e2e
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           path: postguard-e2e
 
       # irmago is PINNED: it's an external dependency the yivi-driver builds
@@ -245,8 +257,9 @@ jobs:
       # change should not break this harness unannounced. Bump deliberately,
       # together with the go.mod replace target.
       - name: Checkout irmago (EUDI fork, pinned)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           repository: privacybydesign/irmago
           ref: de4b4b713f17e92c7181d45dbfdd848784e82b74
           path: irmago
@@ -257,9 +270,10 @@ jobs:
       # making --allowed-origins mandatory). A red nightly here means "PostGuard
       # main changed behavior", not "the harness is broken".
       - name: Checkout postguard (PKG)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: encryption4all/postguard
+          persist-credentials: false
+          repository: privacybydesign/postguard
           path: postguard
 
       # cryptify is checked out UNPINNED for the same stated reason, and that
@@ -278,20 +292,21 @@ jobs:
       # build with cryptify/ as the context. Tracked in
       # encryption4all/postguard#325 — delete this step as part of that.
       - name: Checkout cryptify (ARCHIVED — frozen, see postguard#325)
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           repository: encryption4all/cryptify
           path: cryptify
 
       - name: Install libsqlcipher (CGO dep of irmago's client)
         run: sudo apt-get update && sudo apt-get install -y libsqlcipher-dev
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26'
           cache-dependency-path: postguard-e2e/yivi-driver/go.sum
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
 
@@ -328,11 +343,19 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
-      # Exposes ACTIONS_RUNTIME_TOKEN / ACTIONS_CACHE_URL to the shell so the
-      # raw `buildx bake` below can use the type=gha cache backend.
-      - uses: crazy-max/ghaction-github-runtime@v3
+      # Exposes every ACTIONS_* runtime variable to the shell so the raw
+      # `buildx bake` below can use the type=gha cache backend. All of them, not
+      # a named few: without ACTIONS_CACHE_SERVICE_V2 buildkit talks to the
+      # retired v1 cache service and the build fails on its error page.
+      - name: Expose the Actions runtime to the shell
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            for (const [name, value] of Object.entries(process.env)) {
+              if (name.startsWith('ACTIONS_')) core.exportVariable(name, value);
+            }
 
       # Build the two Rust images with the GitHub Actions layer cache
       # (issue #239). The expensive layer is cargo-chef's dependency compile;
@@ -363,7 +386,7 @@ jobs:
       - name: Wait for services healthy
         run: |
           check() {
-            for i in $(seq 1 60); do
+            for _ in $(seq 1 60); do
               code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$1" || true)
               if [ "$code" = "200" ]; then echo "  $1 healthy"; return 0; fi
               sleep 5

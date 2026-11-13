@@ -12,7 +12,7 @@
 # commit sha (an abbreviated one is not a ref the remote can serve).
 set -eu
 
-repo=${PGB_REPO:-https://github.com/encryption4all/postguard-business.git}
+repo=${PGB_REPO:-https://github.com/privacybydesign/postguard-business.git}
 ref=${PGB_REF:-main}
 dest=${PGB_DEST:-/src/postguard-business}
 
