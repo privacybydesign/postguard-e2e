@@ -1,0 +1,149 @@
+# The corpus gate: every committed fixture still opens with the published
+# readers and with current pg-core, and the corpus was only ever appended to.
+#
+# A workflow of its own because the repository ruleset requires the
+# `crypto-fixtures` check, and a required check has to report on EVERY pull
+# request. This job used to live in e2e.yml, whose pull_request trigger is
+# path-filtered: a job a path filter skips reports no status at all, so every
+# pull request outside those paths waited on it forever and could not be merged
+# (#66, which touched one workflow file). Do not add `paths:` to the
+# pull_request trigger below; `src/fixtures-gate-wiring.test.mjs` holds that.
+#
+# Triggers:
+#   - pull_request:      every pull request, unfiltered
+#   - workflow_call:     e2e.yml's `corpus` job, for the nightly schedule, a
+#                        push to `main` that changed fixtures/**, and callers
+#                        in other repos
+#   - workflow_dispatch: manual
+#
+# In a called workflow the `github` context is the CALLER's, which is what the
+# append-only step below relies on: called from e2e.yml's push trigger it sees
+# `push` and `github.event.before`.
+name: fixtures
+
+on:
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Fast, stack-free archival guard (issues #206, #19/#23): every container in
+  # the committed corpus must still open with the pinned published
+  # @e4a/pg-wasm, with the @e4a/pg-js the ecosystem currently ships, and with
+  # the current postguard main's pg-core. Red here means old ciphertexts in the
+  # wild would fail the same way.
+  #
+  # The corpus is append-only, and this job is where that is enforced: the
+  # digest ledger on every event, and the merge-base diff on pull requests.
+  crypto-fixtures:
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    steps:
+      - name: Checkout postguard-e2e
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: postguard-e2e
+          # Full history: the append-only gate compares HEAD against a merge
+          # base — with the PR's target branch on a pull_request, with the
+          # previous tip of `main` on a push — and a shallow clone has no common
+          # ancestor to compare against. The gate fails rather than passing
+          # when it cannot find one, so a regression here goes red, not quiet.
+          fetch-depth: 0
+
+      # Unpinned on purpose — current pg-core is the thing under test here.
+      - name: Checkout postguard (pg-core)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: privacybydesign/postguard
+          path: postguard
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+
+      - name: Install corpus verifier deps
+        working-directory: postguard-e2e/fixtures
+        run: npm ci
+
+      # The gates' own tests: they build a throwaway repository, delete and
+      # edit a fixture in it, and assert the gate refuses. A gate only ever
+      # observed reporting success has not been observed.
+      - name: Test the append-only gate
+        working-directory: postguard-e2e/fixtures
+        run: npm test
+
+      # Runs on every event, including the nightly schedule and a push that
+      # never opened a pull request: the recorded digests are what make "these
+      # bytes are frozen" a property of the repository rather than of review.
+      - name: Check the corpus against its digest ledger
+        working-directory: postguard-e2e/fixtures
+        run: npm run ledger
+
+      # The other half: the ledger says the bytes match what was recorded, this
+      # says the recording itself was only ever appended to. It is the one check
+      # that needs a base commit, so it runs on the two events that have one —
+      # pull_request and push. On `schedule` and `workflow_dispatch` there is no
+      # "before" to compare against and the ledger stands alone.
+      #
+      # `!cancelled()` so it still reports when the ledger step above already
+      # failed. The two gates answer different questions and a tampered corpus
+      # trips both; short-circuiting would mean the second one's verdict is
+      # never seen precisely on the runs it exists for.
+      - name: Enforce that the corpus is append-only
+        if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'push') }}
+        working-directory: postguard-e2e/fixtures
+        env:
+          # A base COMMIT, not a branch name, on both events — and note the gate
+          # reduces whatever it is handed with `git merge-base <ref> HEAD`, which
+          # is what makes one env var correct for two differently-shaped events:
+          #
+          #   pull_request: actions/checkout builds the PR's merge commit, so
+          #     base.sha is exactly its first parent — no extra fetch needed.
+          #   push: `before` is the previous tip of `main`. A fast-forward push
+          #     makes it an ancestor of HEAD, so the merge base IS `before` and
+          #     the diff is exactly the pushed range — for a squash, a merge
+          #     commit or a rebase alike.
+          #
+          # A force-push is the one case where `before` is not an ancestor. Then
+          # the merge base walks back to the fork point: a noisier diff, but a
+          # deleted or rewritten fixture is still caught. If the old tip is
+          # unreachable altogether, merge-base fails and the gate exits non-zero
+          # rather than passing — see append-only.mjs, which names this case.
+          PG_APPEND_ONLY_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: npm run append-only
+
+      # No `!cancelled()` on either verify step, and that asymmetry with the
+      # append-only step above is deliberate. That step answers a question the
+      # ledger does not, so it is worth hearing even after a red ledger. These
+      # two depend on a green ledger: "the reader opened it" and "the reader
+      # rejected it" say nothing about bytes whose provenance is already in
+      # doubt, so running them on an unverified corpus would only produce a
+      # verdict nobody should trust.
+      - name: Verify the corpus with the published JS readers
+        working-directory: postguard-e2e/fixtures
+        run: npm run verify
+
+      # L1 contract check, stack-free half (issue #212): the PKG's canonical
+      # condiscon examples must agree with its JSON Schema. The live half runs
+      # in the golden-flow job (TestLiveContract).
+      - name: Validate contract examples against the JSON Schema
+        working-directory: postguard-e2e/contracts
+        run: npm ci && npm run validate
+
+      # No cargo cache: the cache action this job used is not on the
+      # organization's allowlist, so the pg-core build is cold on every run.
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+
+      # No --locked: pg-core is a path dep whose transitive versions follow
+      # postguard main; pinning them here would only produce false reds.
+      - name: Verify the corpus with current pg-core
+        working-directory: postguard-e2e/fixtures-verify
+        run: cargo run
