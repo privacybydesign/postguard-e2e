@@ -26,8 +26,36 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      # Keeps the token in the checkout: the last step pushes the bump branch.
+      # The bump branch is pushed and its PR opened as the org's release App
+      # when its two secrets exist, and as GITHUB_TOKEN otherwise. Two things
+      # depend on the App: privacybydesign does not let GITHUB_TOKEN open a
+      # pull request at all, and a branch GITHUB_TOKEN pushed starts no
+      # workflows, so the PR would arrive with every required check absent.
+      # Secrets cannot be read in an `if:`, hence the step that turns one into
+      # an output.
+      - name: Check for the release App
+        id: app
+        env:
+          APP_ID: ${{ secrets.RELEASE_APP_ID }}
+        run: echo "enabled=$([ -n "$APP_ID" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - name: Create the release App token
+        id: token
+        if: steps.app.outputs.enabled == 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Warn that GITHUB_TOKEN opens the bump PR
+        if: steps.app.outputs.enabled != 'true'
+        run: echo "::warning::RELEASE_APP_ID is not set, so the bump PR is opened with GITHUB_TOKEN; where the organization forbids that, this job fails."
+
+      # Keeps the token in the checkout: the last step pushes the bump branch,
+      # and the push has to come from the same identity that opens the PR.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 # zizmor: ignore[artipacked]
+        with:
+          token: ${{ steps.token.outputs.token || github.token }}
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -54,7 +82,7 @@ jobs:
 
       - name: Open or update the bump PR
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.token.outputs.token || secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           # Every path the bumper writes. `sdk["pg-js"].current` is also what the
