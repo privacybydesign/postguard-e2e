@@ -26,7 +26,8 @@ Two independent checks enforce it, and they need each other:
 Editing a fixture fails the ledger. Editing a fixture *and* its ledger line
 leaves the ledger self-consistent, and fails the diff check instead. Both are
 wired into the `crypto-fixtures` job in
-[`.github/workflows/e2e.yml`](../.github/workflows/e2e.yml), and both are
+[`.github/workflows/fixtures.yml`](../.github/workflows/fixtures.yml), which
+runs on every pull request, and both are
 themselves tested: `append-only.test.mjs` builds a throwaway repository, deletes
 and edits a fixture in it, and asserts the gate goes red — because a gate only
 ever observed reporting success has not been observed.
